@@ -1,0 +1,95 @@
+---
+title: "Lab 1, Ellie Bolas"
+author: "Ellie Bolas, GEO200CN, Spring 2016"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r set up and load packages}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, eval = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath("../"))
+
+library(readr)
+library(dplyr)
+
+```
+
+
+
+_x_1) Carefully read chapter 1 to 6 in http://rspatial.org/intr/ __
+
+
+_x_2) Read and explore data __
+
+There are two text files with data (loblolly.dat) and (ChickWeightSub.csv). 
+
+Write a script (including brief comments) that
+
+a) Reads them into R
+#Read in Data#
+```{r read in data}
+datapath <- "../GEO200CN/data"
+
+
+lob1<- read.table(file.path(datapath, "loblolly.dat"), header = TRUE) 
+
+#file.path uses the complete path only to its folder
+
+
+chick1<- read.csv(file.path(datapath, "ChickWeightSub.csv"))
+
+```
+
+
+b) for both data sets, lists all the variable names
+#Variable Names#
+```{r variable names}
+head(chick1)
+#variables for ChickWeightSub =  Weight DayOld ChickID DietID
+
+head(lob1)
+#variables for Loblolly =  height age Seed
+
+```
+
+
+c) for each variable in one of the data sets, use a function to compute the min and a function to compute the mean value 
+#Min and Mean#
+```{r min and means}
+lob1 %>% summarize(min_height = min(height, na.rm = TRUE))
+
+#  min_height
+# 1       3.46
+
+chick1 %>%  summarize (min_weight = min(Weight, na.rm =TRUE))
+#  min_weight
+#1         39
+
+min(lob1$age) #[1] 3
+min(lob1$Seed) #[1] 301
+
+mean(lob1$height)
+mean(lob1$age)
+mean(lob1$Seed)
+
+
+```
+
+
+d) now pick one variable from one data set and use functions summary, table, quantile, and boxplot
+
+#One Variable Manipulation
+```{r Lob1 Height}
+summary(lob1$height)
+table(lob1$height)
+quantile(lob1$height)
+#shows where the breaks in the interquantile range fall
+boxplot(lob1$height)
+
+```
+
+
+
+x__Hand in the results as a R Markdown file.__ Both the source file and a pdf. You can complete the .Rmd file available on smartsite.
+
+
