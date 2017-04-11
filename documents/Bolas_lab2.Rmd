@@ -1,0 +1,131 @@
+---
+title: Bolas_Lab_2
+author: Ellie Bolas, GEO200CN, Spring 2016
+output: html_document
+---
+```{r set up and load packages}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, eval = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath("../"))
+
+library(readr)
+library(dplyr)
+
+```
+
+#Pointers from Elise
+```{r Pointers from Elise}
+a<- 1:5
+b<- 6:10
+a*b #multiplies element-wise
+c<- 1:10
+a+c #"c" is larger, when it runs out of elements from "a," it starts back over at the beginning of "a"
+
+```
+
+
+__Carefully read chapter 7 to 14 in http://rspatial.org/intr/ __
+
+
+#x__1) Functions+Apply__
+
+a) Use the files from lab 1 to compute mean values for each variable using 'apply'
+
+```{r read in data}
+datapath <- "../GEO200CN/data"
+
+
+lob1<- read.table(file.path(datapath, "loblolly.dat"), header = TRUE) 
+
+#file.path uses the complete path only to its folder
+
+
+chick1<- read.csv(file.path(datapath, "ChickWeightSub.csv"))
+
+```
+
+```{r means}
+apply(lob1, 2, mean)
+
+apply(chick1, 2, mean)
+```
+
+
+b) Write a function 'f' that behaves like this:
+
+  > f('Sarah')
+  [1] "hello Sarah, how are you"
+  
+  
+```{r name function}
+f<-function(name) {
+  x<- paste("hello ", name,", how are you", sep = "")
+  return(x)
+}
+
+f("Sarah")
+#paste0() seperator is set to be nothing
+
+d<-function(name) {
+   x<- paste0("hello ", name, ",", " how are you")
+   return(x)
+}
+     
+d("Ellie")
+  
+```
+
+c) Write a function 'sumOfSquares' that behaves like this:
+
+  > d <- c(1,5,2,4,6,2,4,5)
+  > sumOfSquares(d)
+  [1] 21.875
+
+To compute the "sum of squares", subtract the mean value of all numbers from each number. Square these numbers and sum them
+
+```{r sumofSquares function}
+d <- c(1,5,2,4,6,2,4,5)
+d
+
+sumofSquares <- function(d) {
+  meand <- mean(d)
+  submean <- d-meand
+  sqsum <- sum(submean*submean)
+  return(sqsum)
+}
+
+sumofSquares(d)
+
+```
+
+
+__2) Data preparation+exploration__. Use the data in "students.csv" and "scores.dat" to assess if there is a relation between the "group" or "age" of a student and their average score and for the three subjects (math, english, geography)
+
+just correlate between average and group and average and age
+```{r read in data and load packages}
+scores <- read.table(file.path(datapath, "scores.dat"), header = TRUE)
+
+students1 <- read.csv(file.path(datapath, "students.csv"))
+
+library(dplyr)
+library(plyr)
+
+```
+
+a) use reshape and merge to combine the two data sets
+```{r combine data sets}
+scores1 <- rename(scores, c("student" = "students"))
+
+students_joined <-full_join(students1, scores1, by = NULL)
+  
+
+```
+
+
+
+b) compute correlation coefficients
+c) produce a relevant plot
+
+
+__Hand in the results for #1 and #2 as a R Markdown file.__ Both the source file and an HTML file. You can complete the .Rmd file available on smartsite.
+ 
+

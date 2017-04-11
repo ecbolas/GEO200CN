@@ -72,6 +72,11 @@ mean(lob1$height)
 mean(lob1$age)
 mean(lob1$Seed)
 
+#apply goes through each column or each row of a matrix and applies the function to each of those
+
+#lapply apply this function to each element of a list
+
+apply(lob1, 2, mean) #(dataframe, 2 means each column, then funcntion)
 
 ```
 

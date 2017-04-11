@@ -1,0 +1,37 @@
+---
+title: Lab 2
+author: GEO200CN, Spring 2016
+output: pdf_document
+---
+
+__Carefully read chapter 7 to 14 in http://rspatial.org/intr/ __
+
+
+__1) Functions+Apply__
+
+a) Use the files from lab 1 to compute mean values for each variable using 'apply'
+
+b) Write a function 'f' that behaves like this:
+
+  > f('Sarah')
+  [1] "hello Sarah, how are you"
+
+c) Write a function 'sumOfSquares' that behaves like this:
+
+  > d <- c(1,5,2,4,6,2,4,5)
+  > sumOfSquares(d)
+  [1] 21.875
+
+To compute the "sum of squares", subtract the mean value of all numbers from each number. Square these numbers and sum them
+
+
+__2) Data preparation+exploration__. Use the data in "students.csv" and "scores.dat" to assess if there is a relation between the "group" or "age" of a student and their average score and for the three subjects (math, english, geography)
+
+a) use reshape and merge to combine the two data sets
+b) compute correlation coefficients
+c) produce a relevant plot
+
+
+__Hand in the results for #1 and #2 as a R Markdown file.__ Both the source file and an HTML file. You can complete the .Rmd file available on smartsite.
+ 
+
