@@ -1,12 +1,13 @@
 ---
 title: Bolas_Lab_2
-author: Ellie Bolas, GEO200CN, Spring 2016
+author: Ellie Bolas, GEO200CN, Spring 2017
 output: html_document
 ---
 ```{r set up and load packages}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, eval = TRUE)
 knitr::opts_knit$set(root.dir = normalizePath("../"))
-
+#always looking from the perspective of where the rmd is, "../" says look outside of this folder
+#~ is a shortcut for your home directory/root folder
 library(readr)
 library(dplyr)
 
@@ -23,7 +24,7 @@ a+c #"c" is larger, when it runs out of elements from "a," it starts back over a
 ```
 
 
-__Carefully read chapter 7 to 14 in http://rspatial.org/intr/ __
+_x_Carefully read chapter 7 to 14 in http://rspatial.org/intr/ __
 
 
 #x__1) Functions+Apply__
@@ -100,9 +101,10 @@ sumofSquares(d)
 
 __2) Data preparation+exploration__. Use the data in "students.csv" and "scores.dat" to assess if there is a relation between the "group" or "age" of a student and their average score and for the three subjects (math, english, geography)
 
-just correlate between average and group and average and age
+-just correlate between average and group and average and age
 ```{r read in data and load packages}
-scores <- read.table(file.path(datapath, "scores.dat"), header = TRUE)
+scores <- read.table(file.path(datapath, "scores.dat"), header = TRUE, na.strings = c("", " ", "-999"))
+#added na.strings later to turn -999 into an na so i could remove it
 
 students1 <- read.csv(file.path(datapath, "students.csv"))
 
@@ -112,20 +114,53 @@ library(plyr)
 ```
 
 a) use reshape and merge to combine the two data sets
-```{r combine data sets}
+```{r reshape and merge}
 scores1 <- rename(scores, c("student" = "students"))
 
-students_joined <-full_join(students1, scores1, by = NULL)
+#students_joined <-full_join(students1, scores1, by = NULL) not useful right now
   
+#need to turn scores1 from long > wide format
+scores2 <- reshape(scores1, idvar = c("students"), timevar = "subject", direction = "wide")
+
+
+#average <- scores2 %>% filter (!is.na(score.math)) %>% mutate(average = mean(c(score.math, score.english, score.geography))) this didn't work
+
+
+#average_score <- scores2 %>% mutate(mean = rowMeans(scores2, na.rm = TRUE, dims =1)) doesn't work b/c scores2 is not numeric
+
+scores2$mean <- rowMeans(scores2[,2:4], na.rm = TRUE) #yay
+
+studentscores <- merge(scores2, students1, by = "students")
+
+head(studentscores)
 
 ```
 
 
-
 b) compute correlation coefficients
 c) produce a relevant plot
+assess if there is a relation between the "group" or "age" of a student and their average score
+
+```{r correlations and plots}
+d <- lm(group ~ mean, data = studentscores)
+d
+
+m <- lm(age ~ mean, data = studentscores)
+m
+
+plot(x = studentscores$group, y = studentscores$mean, pch = 21, bg="blue")
+
+#abline(d, col = "red", lwd = 2) doesn't work
+
+plot(x = studentscores$age, y = studentscores$mean, pch = 21, bg="blue")
+#abline(m, col= "red", lwd = 2) this doesn't seem to work
+abline(a= 20.2908, b=0.2159) #not sure about how to add in this line
+abline(lm(age ~ mean, data = studentscores), bg = "red")
 
 
-__Hand in the results for #1 and #2 as a R Markdown file.__ Both the source file and an HTML file. You can complete the .Rmd file available on smartsite.
+```
+
+
+_x_Hand in the results for #1 and #2 as a R Markdown file.__ Both the source file and an HTML file. You can complete the .Rmd file available on smartsite.
  
 

@@ -1,0 +1,294 @@
+---
+title: "Subsetting in R"
+author: "E Hellwig"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+There will be many times in your time as an R-user when you have some data and you only want to look at or use some of it. This document is a guide for how to extract the stuff that you want (or get rid of the stuff that you don't want) organized by what type of R object you are dealing with (ex. a data.frame). There are almost always multiple ways of doing things, and I will endeavor to present many, if not all, of them. That being said, if you have found another way to do something, that does not mean your way is wrong. It probably means I haven't run into the way that you have decided to do accomplish the task. There are a few exceptions to this, one of which is for loops. Don't use for loops; use the apply family of functions instead.
+
+## Types of objects
+
+In R there are many different types, or classes, of objects. In order to see what class an object is you can use the `class()` function. Different classes have different rules on what you can put inside object of that class. Because of this functions, may require input of a certain class. In addition, the way you subset an object can change the class of the resulting object.
+
+Vectors one of the most rigid classes. They are only one dimension and they can only hold one type of element. So all of the elements have to be numeric, characters (R's name for strings), integers, logical etc. Matrices are similar to vectors in that they also can only contain one type of thing, but they have two dimensions. Finally, all rows must be the same length as all the other rows, and the same goes for the columns.
+
+Data.frames are a little bit different. They also have two dimensions, but their dimensions are not identical. The rows in a data.frame are treated differently from the columns. For instance, the columns of a data.frame must have names, whereas the rows do not need names (like the rows and columns of a matrix). In addition, each column of a data.frame must contain only one type of element (like numeric), but different columns can contain different types of elements. This means that each row may contain more than one type of element. Just like matrices though, all rows must be the same length and all columns must be the same length.
+
+Finally we have lists. Lists are the most general type of data storage object in R. You can put almost anything in them, with no constraints whatsoever. Because of this, they tend to be a little more difficult to work with.
+
+
+# Vectors and Matrices
+
+Vectors and matrices are probably one of the few exceptions to "there are always multiple ways of doing things" rule. There is really only one way to access elements of vectors and matrices and that is by using square brackets, [ ], and numeric indices. 
+
+
+## Vectors
+So, let's say I have a vector `a`, and I want to take the mean of the first 3 elements of it. I need to use the brackets to indicate I am extracting something from the vector `a`, and because I want the first three elements I need a vector that contains the numbers 1, 2, and 3. I can get that in three ways a shown below. I can then use that vector inside of the brackets to extract the first three elements of the `a` vector. 
+
+### Example Vector Code:
+
+```{r vectors}
+
+(a <- sample(1:1000, 20)) #creating some random data and storing it as a vector
+
+#three ways to generate a vector containing the numbers 1, 2, and 3
+(id1 <- 1:3)
+(id2 <- seq(1,3))
+(id3 <- c(1,2,3))
+
+
+a[id1] #extracting the first three elements of vector a
+
+mean(a[id1]) #taking the mean of those elements
+
+
+
+```
+
+
+### Element removal
+
+Say we realize that the second element was not supposed to be in the vector and so we want to remove it. We can do that by using the negative sign. Instead of putting 2 in the brackets we put -2 and that deletes the second element of the vector. Now it is important to remember that another element takes the place of the original element to and becomes element 2. So if you run that code again, you may unwittingly delete an element that you wanted to save. This is a risk you run when you use number indices. Also if you are removing multiple elements, make sure the entire vector of indicies is made negative, not just the first element.
+
+### Element removal code:
+```{r vector_removal}
+
+#removing the third element of a
+(a3 <- a[-3])
+
+#removing the third through the eigth element of a
+(a38 <- a[-(3:8)])
+
+```
+
+
+
+## Matrices
+
+Matrices are similar to vectors in that we are going to use the brackets and numeric indices. However, matrices are two dimensional so we are going to have two arguments inside our brackets instead of one. The first argument will specify the row(s) and the second argument will specify the column(s). If we want to extract one element of our matrix we will have one number (index) for both arguments. If we want to extract a row we will have one number for the first argument and nothing for the second argument. If we want to extract a column we will have nothing in our first argument and one number in our second argument. If we want to extract more than one row or column, all we have to do is replace that number with a vector of numbers. 
+
+Note, it is not enough to just put the vector of numbers in like this: x[1,2,3,4]. This tells R that you want the first row and the second column and the third element of the third dimension and the fourth element of the fourth dimension. Instead you create a vector (like we did when we created the id variables for subsetting vectors), and put that vector in either the first or the second argument. Of course, none of the code below saves any of the data that has been extracted. If we want to do that we need to use the assignment arrow (<-).
+
+### Example Matrix Code:
+
+```{r matrix}
+
+(b <- matrix(sample(1:100, 30), nrow=6)) #creating a matrix to work with
+
+b[2,5] #extracting the element in the second row and 5th column
+
+b[3, ] #extracting the third row
+
+b[ ,2] #extracting the second column
+
+b[c(1,3,4), ] #extracting the first, third and fourth rows
+
+b[ ,3:5] # extracting the third through fifth columns
+
+b[ 2:3, 4:5] #extracting the second and third rows and the fourth and 
+                #fifth columns
+
+```
+
+### Element Removal
+
+Element removal in matrices is quite similar to element removal in vectors. The only differences is that you can remove elements in both dimensions (rows and columns). 
+
+### Example removal code:
+
+```{r matrix2}
+
+b[,-2] #removes column 2
+
+b[, -c(1,2)] #removes column 1 and 2
+
+
+
+```
+
+
+
+# Data.Frames
+
+Now data.frames are in many ways matricies with extra bells and whistles. This means that all of that numeric subsetting we did above works with data.frames. Additionally, data.frame columns have names that we can use to refer to them. We can use this to avoid potentially extracting or removing the wrong column. Besides the numeric subsetting that we used with the matrices, there are two ways to extract columns from a data.frame. First you can use the brackets with the name of the column as a string (aka in quotes), or you can use the dollar sign ($). There are reasons to use both, and you will use both sometimes in the same line of code.
+
+### Example data.frame code:
+
+```{r df1}
+#mtcars
+
+str(mtcars)
+
+#if you just want 1 variable you can use the dollar sign to extract it
+#when you do this the result you get is a vector
+(carmpg <- mtcars$mpg)
+
+
+#if you want more than one variable, you need to use either the numeric
+    #indices or the names of the columns. When you do this, the result you
+    #get is a data.frame
+mpgvars <- mtcars[, c(1,4,6)]
+head(mpgvars)
+
+mpgvars <- mtcars[, c('mpg', 'hp','wt')]
+head(mpgvars)
+
+```
+
+The last two lines of code do the same thing. However, if the columns of your data get scrambled only the second option will give you the same result every time. Now if you want to remove columns, you can use the same negative number trick that we used on the vectors and matrices if you are using numeric indices. However, if you are using column names this does not work. If you are using column names you have to set the column you want to get rid of to NULL (See below). This works the same for rows.
+
+### Example removal code:
+
+```{r df_removal}
+
+mpgvars[,-2] #getting rid of the second column using negative indices
+
+
+mpgvars[,'hp'] <- NULL #geting rid of the second column using column names
+mpgvars
+
+```
+
+
+# The function which()
+
+Many times you may want to extract all of the rows where a certain thing is true, like all samples that were taken on a certain day, or all tests with a score less than zero. To do that you can use the function which(). Say I want a data frame with all of the cars with horsepower greater than 150. Here are a couple of ways to do it.
+
+### Example code:
+
+```{r which1}
+
+#this tells me which rows contain horsepowers greater than or equal to 150
+(hprows <- which(mtcars[, 'hp'] >= 150))
+
+#then I use this vector to extract those rows
+mtcars[hprows,]
+
+
+
+#here is how to do it in one step
+mtcars[mtcars$hp>=150,]
+
+
+
+```
+
+####
+
+Now you might wonder, why would I ever use which() if it's so much easier to just do it in one step using the $ variable extraction. The answer is because, when you have multiple conditions (as shown below), R tends to get a bit wonky and starts replacing entire rows with NAs instead of just removing the rows if you do it the one line of code way. Of course, it doesn't actually look like this at first, but then if you try and manipulate the data.frame in certain ways everything gets weird. Also as a note if you want to join to logical statement with an and you use the character &, and if you want to join to logical statements with an or you use the character |. 
+
+```{r which2}
+
+#figuring out which cars have 8 cylinders, three gears and greater than 150 horsepower
+selectrows <- which(mtcars$cyl==8 & mtcars$hp>=150 & mtcars$gear==3)
+
+#selecting only those cars and also only the variables (columns) I am interested in.
+(mt2 <- mtcars[selectrows,c('mpg', 'hp','wt')])
+
+
+```
+
+
+## Element Replacement
+
+Finally, you might want to replace one or more elements in your data.frame based on their value. You can do that using the tools above. For example, the variable `r names(mtcars)[9]` specifies whether the transmission is automatic or manual using a zero or one. Now I may want to change that so that the variable values are automatic and manual so I don't have to look up which is which every time I use this data set. 
+
+### Example replacement code:
+
+```{r}
+
+#converting 0 to automatic
+(autorows <- which(mtcars$am==0))
+(mtcars[autorows, 'am'] <- 'automatic')
+
+#converting 1 to manual
+(mtcars[mtcars$am==1, 'am'] <- 'manual')
+
+
+
+
+```
+
+
+# Lists
+
+The following is an example of a list. I'm not sure when a list like this would be useful, but it is a legal list in R.
+
+```{r}
+
+l <- list(a=1:5,
+          b=NA,
+          c=mtcars,
+          d=list(1,2,3,4),
+          e=c("bread",'salami','cheddar','mustard','tomato'),
+          f=mean,
+          g=matrix(1:9, nrow=3))
+
+```
+
+The list `l` (above), has data types `numeric` (vector), `logical`,  `data.frame`, `list`, `character` (vector), `function`, and `matrix` contained in it. Similarly to the data.frame each of its elements have names, though they do not have to. The extraction function used with lists, unlike everything else, is the double brackets, [[ ]]. In addition, because the elements of our list have names we can use the dollar sign to extract elements of the list using their names.
+
+### Example list code:
+
+```{r}
+
+# to extract the first element the following three lines do the same thing
+l[[1]]
+l[['a']]
+l$a
+
+
+```
+
+####
+
+Now if you do use the single brackets instead of the double brackets with a list, you will not get an error. Instead something else will happen. The class of the result will be different.
+
+### Example code:
+
+```{r}
+
+#the lines below do something different than the double brackets do
+l[1]
+l['a']
+
+#investigate using the function class(), which tells you what type of data you are working with.
+class(l[[1]])
+length(l[[1]])
+class(l[1])
+length(l[1])
+```
+
+####
+
+If you use the single brackets, what you are getting is a list with the elements being the elements you have selected. If you only select one element, it will be a list of length one. Of course, just like with all of the other subsetting, you can lists with vectors of numbers and names in addition to just single numbers and single names. If you do this though, you must use single brackets You can also remove elements just like we did with data.frames
+
+### Example list code:
+
+```{r list2}
+
+l[6:4] #extract elements using numeric indices
+
+l[c('b','d','f')] # extract elements using element names
+
+
+l[-3] #removing the third element
+
+l[['g']] <- NULL #removing element g
+
+l
+
+
+
+```
+
+
+
+
+
