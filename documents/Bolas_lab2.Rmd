@@ -145,8 +145,11 @@ assess if there is a relation between the "group" or "age" of a student and thei
 d <- lm(group ~ mean, data = studentscores)
 d
 
+cor(studentscores$group, studentscores$mean) #this returns a different number...
+
 m <- lm(age ~ mean, data = studentscores)
 m
+cor(studentscores$age, studentscores$mean)#see above
 
 plot(x = studentscores$group, y = studentscores$mean, pch = 21, bg="blue")
 
