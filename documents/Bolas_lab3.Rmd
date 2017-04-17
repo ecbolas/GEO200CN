@@ -1,0 +1,258 @@
+---
+title: Bolas_Lab3
+author: Ellie Bolas, GEO200CN, Spring 2017
+output: html_document
+---
+
+_x_1) Carefully read Chapter 2 of the R Spatial R companion to Geographic Information Analysis http://rspatial.org/rosu/rst/Chapter2.html __. Answer the six questions found in the text, and hand in the results as a R Markdown file. Upload both the source file and a HTML file. 
+
+#MAUP
+#Q1 Notes: Make Matrices
+```{r Notes}
+# independent variable
+ind <- c(87, 95, 72, 37, 44, 24,
+         40, 55, 55, 38, 88, 34,
+         41, 30, 26, 35, 38, 24,
+         14, 56, 37, 34,  8, 18,
+         49, 44, 51, 67, 17, 37,
+         55, 25, 33, 32, 59, 54)
+
+# dependent variable
+dep <- c(72, 75, 85, 29, 58, 30,
+         50, 60, 49, 46, 84, 23,
+         21, 46, 22, 42, 45, 14,
+         19, 36, 48, 23,  8, 29,
+         38, 47, 52, 52, 22, 48,
+         58, 40, 46, 38, 35, 55)
+
+plot(ind, dep)
+m <- glm(dep ~ ind)
+m
+# glm fits a linear regression, then use abline to add that to the plot
+abline(m)
+
+s <- summary(m)
+s
+
+#make the axis look nicer, change the symbols
+plot(ind, dep, pch=18, xlim=c(0,100), ylim=c(0,100),
+    axes=FALSE, xlab='', ylab='', yaxs="i", xaxs="i") #The arguments yaxs="i", and xaxs="i" force the axes to be drawn at the edges of the plot window (overwriting the default to enlarge the ranges by 6%
+axis(1, at=(0:5)*20)
+axis(2, at=(0:5)*20, las=1)
+
+#add regression formula
+#this is the writing of the formula that appears above the coordinates using paste0 to put the parts of the statement together. [1] or [2] refer to which row in the coefficients matrix. Not sure what 4 signifies
+f <- paste0('y = ', round(s$coefficients[2], 4), 'x + ', round(s$coefficients[1], 4))
+# add the text in variable f to the plot. 0,96 are the x,y coordinates, f is what to write, pos=4 is where text should go relative to coordinates
+text(0, 96, f, pos=4) 
+# compute r-squared
+R2 <- cor(dep, predict(m))^2
+
+# set up the expression (a bit complex, this), getting R2 to look good when added
+r2 <- bquote(italic(R)^2 == .(round(R2, 4)))
+# and add it to the plot
+text(0, 85, r2, pos=4)
+
+#The regression line should only cover the range (min to max value) of variable ind. An easy way to do that is to use the regression model to predict values for these extremes and draw a line between these
+
+# create a data.frame with the range (minimum and maximum) of values of ind
+px <- data.frame(ind = range(ind))
+# use the regression model to get predicted value for dep at these two extremes
+py <- predict(m, px)
+# combine the min and max values and the predicted values
+ln <- cbind(px, py)
+# add to the plot as a line
+lines(ln, lwd=2)
+
+#Before aggregation, turn each variable (ind or dep) from a vector into a matrix
+mi <- matrix(ind, ncol=6, nrow=6, byrow=TRUE)
+md <- matrix(dep, ncol=6, nrow=6, byrow=TRUE)
+
+mi
+#By default R fills matrices column-wise. If byrow = FALSE (the default) the matrix is filled by columns, otherwise the matrix is filled by rows.
+
+#t(x) transposes matrix/data frame x
+#a <- matrix(1:30, 5, 6) #matrix of numbers 1-30 with 5 rows, 6 columnes, filled column-wise
+#a
+#ta <- t(a) ##-- i.e.,  a[i, j] == ta[j, i] for all i,j :
+#for(j in seq(ncol(a)))
+  #if(! all(a[, j] == ta[j, ])) stop("wrong transpose")
+#ta
+
+
+```
+
+#Q1
+```{r Q1}
+#Q1 Create these matrices from ind and dep without using byrow=TRUE
+
+mi1 <- matrix(ind, ncol = 6, nrow = 6)
+md1 <- matrix(dep, ncol = 6, nrow = 6)
+mi1
+tmi1 <- t(mi1) 
+tmi1
+md1
+tmd1 <- t(md1)
+tmd1
+```
+
+#Q2 Aggregate Data
+```{r Q2}
+library(raster)
+
+# turn matrices into RasterLayer objects. Aggregation from pg 37 not usual for matrices, so need to turn matrices into raster
+ri <- raster(mi)
+rd <- raster(md)
+ri
+
+plot(ri, legend=FALSE)
+text(ri)
+
+#We specify that we want to aggregate sets of 2 columns, but not aggregate rows. The values for the new cells should be computed from the original cells using the mean function.
+
+#Aggregate raster cells: Aggregate a Raster* object to create a new RasterLayer or RasterBrick with a lower resolution (larger cells). Aggregation groups rectangular areas to create larger cells. The value for the resulting cells is computed with a user-specified function
+
+ai1 <- aggregate(ri, c(2, 1), fun=mean) #c(2,1) means 2 cells horizontally, 1 row
+ad1 <- aggregate(rd, c(2, 1), fun=mean)
+ai1
+as.matrix(ai1)
+
+#Question 2: Instead of the ``mean`` function What other functions could, in principle, reasonably be used in an aggregation of raster cells?
+
+#Answer: other functions include modal, min, max, sd
+#example:
+ai2 <- aggregate(ri, c(2,1), fun=max)
+ai2
+as.matrix(ai2)
+
+ai3 <- aggregate(ri, c(2,1), fun=sd)
+as.matrix(ai3)
+#can also play around with which cells are aggregated together
+ai4 <- aggregate(ri, c(2,2), fun = mean)
+as.matrix(ai4)
+```
+
+#Q3 Make Aggregated Data into Data Frame
+```{r Q3 Notes}
+#to do regressions on the aggregated data, make that data into a raster later, then aggegate it, then put it into a raster stack, to then combine as two columns in a data frame
+s1 <- stack(ai1, ad1)
+names(s1) <- c('ind', 'dep')
+s1
+plot(s1)
+#why does it need to be a raster stack first?
+
+d1 <- as.data.frame(s1)
+d1
+
+#Question 3: There are other ways to do the above (converting two RasterLayer objects to a data.frame). Show how to obtain the same result (d1) using as.vector and cbind.
+
+# using as.vector:
+ind2 <- as.vector(ai1)
+dep2 <- as.vector(ad1)
+
+d2 <- data.frame(ind2, dep2)
+d2
+
+#using cbind:
+d3 <- cbind(ind2, dep2)
+d3
+```
+
+#Distance, Adjancency, interaction, neighborhood
+#Q4 Distance
+```{r}
+A <- c(40, 43)
+B <- c(1, 101)
+C <- c(54, 111)
+D <- c(104, 65)
+E <- c(60, 22)
+F <- c(20, 2)
+pts <- rbind(A,B,C,D,E,F)
+head(pts)
+plot(pts, xlim=c(0,120), ylim=c(0,120), pch=20, cex=2, col='red', xlab='X', ylab='Y', las=1)
+text(pts+5, LETTERS[1:6])
+
+dis <- dist(pts)
+dis
+D <- as.matrix(dis)
+round(D)
+
+#Question 4: Show R code to make a cluster dendogram summarizing the distances between these six sites, and plot it.
+
+hc <- hclust(dis, method = "complete", members = NULL)
+plot(hc)
+```
+
+#Q5 Adjacency
+```{r}
+#showing if values are within a distance of 50 
+a <-  D < 50
+a
+
+#making it into a nice matrix
+diag(a) <- NA #turn diagonals in NAs
+Ad50 <- a * 1 #turn true/false into 0 & 1
+Ad50 #in row A, column E & F each have a 1, this means that object A has 2 adjacent objects (E & F)
+
+#3 nearest neighbors
+cols <- apply(D, 1, order) #apply the function "order" to matrix D over rows (1). put D is ascending order, don't quite understand this
+
+# we need to transpose the result
+cols <- t(cols)
+cols
+#leave out col 1
+cols <- cols[, 2:4]
+cols
+
+rowcols <- cbind(rep(1:6, each=3), as.vector(t(cols)))
+head(rowcols)
+
+Ak3 <- Ad50 * 0
+Ak3[rowcols] <- 1
+Ak3
+
+#interactions/weight matrix
+W <- 1 / D
+round(W, 4)
+
+#normalize rows
+W[!is.finite(W)] <- NA #change inf > NA
+rtot <- rowSums(W, na.rm=TRUE)
+
+W <- W / rtot #divide the inverse of D (W) by rpw sums to get 1, then it's normalized
+rowSums(W, na.rm=TRUE)
+
+#Question 5: Show how you can do ‘column-normalization’ 
+W1 <- 1/ D
+round(W1, 4)
+W1[!is.finite(W1)] <- NA
+ctot <- colSums(W1, na.rm=TRUE)
+ctot
+W1 <- W1 / ctot
+
+colSums(W1, na.rm=TRUE)
+#feel completely confused by why and how to do this. Does column-normalization also mean that the columns should all add to 1? Why do you want that, when the columns are supposed to show the weighted adjacency?
+```
+
+#Proximity Polygons
+Proximity or Voroni polygons: For a set of non-overlapping spatial objects, a set of polygons can be defined such that each polygon encloses the area closest to one of the spatial objects 
+```{r}
+#install.packages("dismo")
+#install.packages("deldir")
+library(dismo)
+library(deldir)
+v <- voronoi(pts)
+
+par(mai=rep(0,4))
+plot(v, lwd=4, border='gray', col=rainbow(6))
+points(pts, pch=20, cex=2)
+text(pts+5, toupper(letters[1:6]), cex=1.5)
+class(v)
+v
+
+```
+
+#Question 6: 
+The SpatialPolygonDataFrame class is defined in package sp. But we never used library('sp') . So how is it possible that we have one of such objects?
+
+The "sp" package is an attached package that somehow was loaded with another package. For example, it is  automatically loaded by "maptools" package, which I have installed. Or, it may auto-load with other installed packages, too.
