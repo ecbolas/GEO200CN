@@ -145,20 +145,19 @@ assess if there is a relation between the "group" or "age" of a student and thei
 d <- lm(group ~ mean, data = studentscores)
 d
 
-cor(studentscores$group, studentscores$mean) #this returns a different number...
+cor(studentscores$group, studentscores$mean) #this is the correct fuction for calculating the correlation coefficient
 
 m <- lm(mean ~ age, data = studentscores) #response variable goes on the left since I'm plotting mean as a function of age
 m
-cor(studentscores$age, studentscores$mean)#see above
+cor(studentscores$age, studentscores$mean)
 
 plot(x = studentscores$group, y = studentscores$mean, pch = 21, bg="blue")
 
-#abline(d, col = "red", lwd = 2) doesn't work
 
 plot(x = studentscores$age, y = studentscores$mean, pch = 21, bg="blue")
-#abline(m, col= "red", lwd = 2) this doesn't seem to work
-abline(a= 6.8610, b=0.0399) #not sure about how to add in this line
-abline(lm(mean ~ age, data = studentscores), bg = "red")
+#abline, a=y intercept, b=slope
+abline(a= 6.8610, b=0.0399) 
+#abline(lm(mean ~ age, data = studentscores), bg = "red")
 
 
 ```
