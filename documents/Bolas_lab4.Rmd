@@ -1,0 +1,258 @@
+---
+title: "Bolas_Lab4"
+author: Ellie Bolas, GEO200CN, spring 2017
+output: html_document
+---
+#Set-up, Load Libraries
+```{r set up, load packages/libraries}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, eval = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath("../"))
+#always looking from the perspective of where the rmd is, "../" says look outside of this folder
+#~ is a shortcut for your home directory/root folder
+
+#install.packages("OpenStreetMap")
+library (OpenStreetMap) 
+library (rgdal)
+library(sp) 
+library(maptools)
+library (raster)
+
+```
+
+
+# Lab 4 Introduction to spatial data in *R*
+
+In this lab you will begin to get used to using R with spatial data and practice your map making in R for a variety of data types.
+
+Start by reading through sections 7.1-7.3 in Arnold and Tilton.2015. Humanities Data in R.
+
+#Arnold and Tilton 2015 Notes
+Scatterplots:
+-scatter plot: thing of x= longitude, y= latitude
+To make scatter plot with underlying map:
+1. plot your points
+2. snippets package (maybe can also use OpenStreetMap package) pulls in an underlying map of ~25 tiles using osmap
+3. then use points function to put the points back ontop of the map tiles
+4. to set size of map, in plot, asp parameter sets the aspect ratio,the ratio of the scale on the y-axis to the scale of the x-axis, of a plot. If this is set to the ratio of the length of a degree of latitude to the length of a degree of longitude, the resulting map will be undistorted.
+-maps from Stamen Design with osmap function are black & white and less busy than OpenStreetMaps
+
+ShapeFiles:
+-Map tiles don't actually have information about the roads or geo features, they are just pixels (raster data.)
+-Vector data has meta-data attached to objects, and shapefiles are a way to store vectorize geospatial data
+-the SpatialPolygonsDataFrame has both geospatial information and a dataframe with metadata
+-plot these with projections, use rgdal package if needed to convert projections
+
+
+Then read through ‘Spatial Data Manipulation’ on RSpatial.
+[http://rspatial.org/spatial/index.html]. There’s a lot here, so feel free to move through it quickly and think of this as reference. 
+
+
+#1. From scatterplots to maps: Create a series of point maps with context
+```{r point maps}
+#a) Provided Map
+datapath <- "../GEO200CN/data"
+UCplaces <- read.csv(file.path(datapath, "UCplaces.csv"))
+map <- openmap (c(38.55, -121.77), c(38.53, -121.74)) #openmap function gets a map using upper-left and lower-right corners (function knows that order)
+plot (map) 
+mapLatLong <- openproj(map) #openproj converts from the default mercator projection to Latitude Longitude 
+plot (mapLatLong) 
+points (UCplaces$long, UCplaces$lat, pch=16) #add the points 
+text (UCplaces$long, UCplaces$lat, labels = UCplaces$names, pos=3) #add  labels
+
+# b) change the background context map, [hint: ?openmap will give you a list of possible types]
+map2 <- openmap(c(38.55, -121.77), c(38.53, -121.74), zoom = NULL, type = "stamen-watercolor")
+plot(map2)
+map2LatLong <- openproj(map2)
+plot(map2LatLong)
+points (UCplaces$long, UCplaces$lat, pch=16) 
+text (UCplaces$long, UCplaces$lat, labels = UCplaces$names, pos=3)
+
+#c) change the extent of the map to include more of Davis, and change the size and appearance of the points and labels as appropriate
+map3 <- openmap(c(38.562083, -121.787334), c(38.526302, -121.728406), zoom = NULL, type = "esri")
+plot(map3)
+map3LatLong <- openproj(map3)
+plot(map3LatLong)
+points (UCplaces$long, UCplaces$lat, col= "blue", bg="blue", cex= 1.5, pch=23) 
+text(UCplaces$long, UCplaces$lat, labels = UCplaces$names, col = "blue", cex = 1.2, pos=4)
+```
+
+
+#2. Map displays: Create a series of simple maps with data
+
+```{r}
+#a) Lat Long map of all the states and Puerto Rico
+#read in the shape file
+datapath1 <- "../GEO200CN/data/State_2010Census_DP1"
+statefp <- file.path(datapath1,"State_2010Census_DP1")
+states <-readOGR(dsn = statefp, layer = "State_2010Census_DP1" ) 
+#readOGR reads a shapefile in, need to define first argument, DSN, is the path or director, seond argument, layer, is the file itself
+
+class(states)
+dim(states) #52 rows which include Washington DC, and PR
+index <- (as.data.frame(states)$STUSPS10 %in% c("AK", "HI")) #removes AK and HI from the map
+states1 <- states[!index,]
+dim(states1)
+class(states1)
+plot(states1)
+
+#identify the projection this is in, then it can be converted if necessary
+crs(states1) # +proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0 
+# b) a map in the UTM coordinate system with the states labeled
+#install.packages("rgeos")
+library(rgeos)
+#need to assign a projection, then it can be transformed
+#latlong<- CRS(projargs = "+proj=longlat")
+#proj4string(states1) <- latlong
+#Actually, this wasn't necessary, as latlong had already been assigned (which I knew b/c I checked above). Good to know how to assign this if necessary, here it wasn't I just need to get to the converting part
+
+utms <- CRS(projargs = "+proj=utm +zone=14")
+states1Trans <- spTransform(x = states1, CRSobj = utms) #transformed to utms
+plot(states1Trans)
+
+centroid <- gCentroid(spgeom=states1Trans, byid=TRUE) #find the middle of the states, gCentroid returns the center of the states
+head(centroid)
+text(x=centroid$x, 
+     y=centroid$y,
+     label=as.data.frame(states1Trans)$NAME10, cex=0.7)
+
+#c) a cross hatch map showing the proportion of seasonal of recreational housing in each state
+
+states1Transdata <-as.data.frame(states1)
+#data now in data frame, now we look at the housing and how it is binned (seasonal, rec, or occaisional)
+
+perHouseRec <- states1Transdata$DP0180008 / states1Transdata$DP0180001  #finds fancy housing/overall housing
+bins <- quantile(perHouseRec, seq(0,1,length.out=8))  #quantile makes sample quantiles (weighted averages) to correspond to given probabilities. perHouseRec is the vector being sampled (all the fancy housing), and seq refers to what probabilities are being used. this makes 8 bins between 0 and 1
+
+x <- 2:18
+v <- c(5, 10, 15) # create two bins [5,10) and [10,15). actually, this makes four bins,[0,5], [5,10], [10,15], [15,]
+findInterval(x, v) #tells how many of x fit into each of the 4 bins
+
+binId <- findInterval(perHouseRec, bins) #findIntervalmeans find each interval of bins that contains perHouseRec
+binId #this shows which bin each of the elements in perHouseRec should fall in, use this for below:
+
+densityVals <- seq_len(length(bins)) * 5  #seq_len generates regula sequences in the data bins, and is than scaled to a factor of 5
+plot(states1Trans, density=densityVals[binId]) #plotting the raser object states1Trans, and a second object wich is a function of some data
+
+#d) produce two additional maps using the color palettes deﬁned above as colSet01 and colSet02
+colSet01 = c("grey90", "grey80", "grey70", "grey60", "grey50", "grey40", "grey30", "grey20") 
+plot (states1Trans, col=colSet01[binId]) #that's cool! uses colors to plot it, rather than the density hashmarks
+
+colSet02 = rev(heat.colors(length (bins))) #rev reverses the argument, heat.colors is a series of colors
+plot (states1Trans, col=colSet02[binId])
+
+```
+
+
+#3. Exploring spatial data: Get to know the structure of spatial data in R 
+
+
+```{r galap a -d }
+#a) Read the shapeﬁle "galap.shp" 
+galap.a <- file.path(datapath,"galap")
+galap <-readOGR(dsn = galap.a, layer = "galap" )
+
+#b) Show the class of the object in R
+classgalap <- class(galap)
+
+#c) How many polygons are there in this object?
+galap
+polygonsgalap <- 30
+
+#d) How many variables are there in this object?
+variablesgalap <- 12
+
+```
+ 
+b) classes of galap = `r classgalap`
+c) polygons in galap = `r polygonsgalap`
+d) variables = `r variablesgalap`
+
+```{r e - f }
+#e) Make a plot of the islands (their outlines).
+plot(galap)
+
+#f) Make a scatter plot of the number of species as a function of the size of the island. 
+galapdf <- as.data.frame(galap)
+plot(x = galapdf$area, y = galapdf$species, pch = 21, bg = "blue")
+m <- lm(species ~ area, data = galapdf) 
+m
+abline(a= 63.78328, b= 0.08196)
+
+```
+
+
+g) What quantity would you use to make a choropleth to represent the number of species on each island?
+A: I need a value of species/area for each island, then the colors will be attached to this value
+
+```{r h-i}
+#h) Create that quantity as a new variable in the SpatialPolyonsDataFrame and plot it with spplot 
+
+galapdf <- transform(galapdf, sparea = species / area)
+class(galapdf)
+
+galap1 <- SpatialPolygonsDataFrame(galap, data= galapdf, match.ID = TRUE)
+#b/c galapdf was just a data.frame, I had to convert it back to a spatial object in order to use SpatialPolygonsDataFrame. for this function, the first argument is that object with the polygons (galap) and the second argument is the data frame with attributes that I want combined with it
+
+spplot(galap1, "sparea", main = "Galapagos Species Per Island Area" )
+#for spplot, 1st argument is the data, 2nd argument in quotes is the variable I want to highlight, and I added main, which is the title
+
+#i) Select the largest island and save it to a new shapeﬁle.
+
+isabelasp <- galap1[2,]
+#[] these brackets subset spatial (or other) data. so, here, we are just pulling out the row that has the info for isabela island
+plot(isabelasp)
+class(isabelasp)
+
+writeOGR(isabelasp, dsn = datapath, layer = "isabelasp", driver = "ESRI Shapefile" ) #this works just like readOGR, 1st argument is the data, dsn is your file path, layer is the name of the shapefile. the new thing is adding a driver, which says how you want the shapefile out
+```
+
+
+
+```{r j-l}
+# j) Download elevation data for Ecuador (use the function getData in the raster package)
+getData('ISO3')
+ecualt <-getData("alt", country = "ECU", mask = TRUE)
+
+# k) Use the crop function in the raster package and then map the elevation data (add the island outlines).
+
+#When I tried to crop these together, they didn't overlap in extent, maybe b/c they are projecting in different systems?
+crs(ecualt)
+crs(galap)
+
+#transform altitude to utms. have to do this with galap bc ecualt is a raster object
+long_lat <- CRS(projargs = " +proj=longlat +datum=WGS84")
+galap_trans <- spTransform(x = galap, CRSobj = long_lat)
+
+galapalt <- crop(ecualt, galap_trans)
+
+#plot(galapalt) only plots the altitude
+#plot(galap, add = TRUE) didn't add this
+
+#From: http://rspatial.org/spatial/rst/9-maps.html. when the above doesn't work, use spplot. here in bounds, I pulled out the polygons from galap to be the boundaries, then plotted them wih the altitude
+bounds <- list("sp.polygons", galap)
+spplot(galapalt, sp.layout=bounds )
+
+# l) Create a contour map of elevation in Ecuador.
+galap_cont <- contour(galapalt) #that's fine, but it's not amazing. it looks like ther is a lot of other cool stuff to do with contours, too.
+
+#spplot(galapalt, sp.layout=galap_cont)
+#plot(galapalt)
+#plot(galap_cont, add = TRUE)
+
+#another good mapping page: http://www.nickeubank.com/wp-content/uploads/2015/10/RGIS3_MakingMaps_part1_mappingVectorData.html#spplot
+
+
+#contour(galapalt, add = TRUE) this didn't work, I think different projection systems?
+
+filledContour(galapalt)
+#another contour map option
+
+
+```
+
+ 
+
+Upload to smartsite an Rmarkdown and HTML file. 
+
+Due: Monday, April 24, 9a
+

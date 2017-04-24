@@ -195,15 +195,19 @@ Ad50 <- a * 1 #turn true/false into 0 & 1
 Ad50 #in row A, column E & F each have a 1, this means that object A has 2 adjacent objects (E & F)
 
 #3 nearest neighbors
+#For each row, we first get the column numbers in order of the values in that row (that is, the numbers indicate how the values are ordered
 cols <- apply(D, 1, order) #apply the function "order" to matrix D over rows (1). put D is ascending order, don't quite understand this
+
+#ok. order D by row means think of c(A,B,B,D,E,F) of D. the index # simply refers to the order of the elements. So, when we order D, for element A, reading down that column tells you that the closest element is index 1(A), the next closest is index #5 (which is E, 29 m away), the third closest element is the 6th one (F, 45 m away), etc. 
 
 # we need to transpose the result
 cols <- t(cols)
 cols
-#leave out col 1
+#leave out col 1, because it simply reflects that A is closest to A, B is closest to B, etc.
 cols <- cols[, 2:4]
-cols
+cols #this now shows the 3 nearest neighbors for each element, by telling you the index number of those neighbors
 
+#As we now have the column numbers, we can make the row-column pairs that we want (rowcols)
 rowcols <- cbind(rep(1:6, each=3), as.vector(t(cols)))
 head(rowcols)
 
