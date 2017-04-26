@@ -99,16 +99,14 @@ middle2 <- if (randomvector > 25 & randomvector < 75) {
 
 #####################
 #second try
-indexes <- which(randomvector>25 & randomvector<75) #identify which elements the ones we want. I think this doesn't work because it only works with true/false, logical vectors
-indexes #this didn't select the correct things
+randomvector
+indexes <- which(randomvector>25 & randomvector<75) #which returns the indexes of the numbers that satisfy this condition. 
+indexes #this tells me which indexes have the numbers we want. in other words, this list tells me that the 1st, 2nd, 4th, etc slots of randomvector has numbers that fulfill my requirements
 
-rvorder<- order(randomvector)
-rvorder #the problem is that this returns stuff in the order that it was selected, doesn't recognize the actual number values of this list
+#how to extract just those numbers? 
 
-parameters <- randomvector
-
-middle <- [indexes] #select those elements
-
+middle <-randomvector[indexes] #select those elements
+middle
 
 ##Problem 2: Add 10 to every element of l1 and return as a vector.
 

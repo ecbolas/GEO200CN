@@ -172,7 +172,9 @@ d) variables = `r variablesgalap`
 plot(galap)
 
 #f) Make a scatter plot of the number of species as a function of the size of the island. 
-galapdf <- as.data.frame(galap)
+galap
+#already a SpatialPolygonsDataFrame
+galapdf <- as.data.frame(galap) #I didn't need to do this. Anything you can do to a df, you can do to a SPDF, so I could have plotted just those columns from galap as is. Then I wouldn't have had to transform!
 plot(x = galapdf$area, y = galapdf$species, pch = 21, bg = "blue")
 m <- lm(species ~ area, data = galapdf) 
 m
@@ -210,7 +212,7 @@ writeOGR(isabelasp, dsn = datapath, layer = "isabelasp", driver = "ESRI Shapefil
 
 ```{r j-l}
 # j) Download elevation data for Ecuador (use the function getData in the raster package)
-getData('ISO3')
+#getData('ISO3') this is really long, but it told me what the country code was for Ecuador
 ecualt <-getData("alt", country = "ECU", mask = TRUE)
 
 # k) Use the crop function in the raster package and then map the elevation data (add the island outlines).
