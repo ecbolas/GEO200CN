@@ -1,0 +1,217 @@
+---
+title: "Bolas_Lab5"
+author: Ellie Bolas, GEO200CN, spring 2017
+output: html_document
+---
+
+# Lab 5: Maps as Outcomes of Processes
+
+```{r, echo=FALSE, include=FALSE}
+  library(knitr)
+opts_chunk$set(
+	fig.width  = 5,
+	fig.height = 5,
+	collapse   = TRUE
+)
+```
+
+Please read http://rspatial.org/rosu/rst/Chapter4.html 
+
+answer the questions in a single *R Markdown* file + HTML.
+
+#Make Fig. 4.2 pg 96 (Deterministic Process)
+The figure is a realization of the deterministic spatial process z = 2x + 3y, with values for x and y between 0 and 7
+```{r}
+#with expand.grid
+x <- 0:7
+y <- 0:7
+xy <- expand.grid(x, y) #creates a df for all combos of vectors or factors
+colnames(xy) <- c('x', 'y')
+head(xy)
+z <- 2*xy[,1] + 3*xy[,2]
+zm <- matrix(z, ncol=8)
+
+#make your own function
+detproc <- function(x, y) {
+  z <- 2*x + 3*y
+  return(z)
+}
+
+v <- detproc(xy[,1], xy[,2])
+zm <- matrix(v, ncol=8)
+
+#to plot, add values as text so there are no points
+plot(x, y, type='n')
+text(xy[,1], xy[,2], z)
+contour(x, y, zm, add=TRUE, lty=2) #another way to use contour. x,y are grid lines where zm values measured, zm is the matrix being evaluated
+```
+
+#Fig. 4.2 as Spatial Data
+```{r}
+library(raster)
+r <- raster(xmn=0, xmx=7, ymn=0, ymx=7, ncol=8, nrow=8)
+X <- init(r, 'x') #init makes a raster layer. 1st argument refers to the raster object, r. 2nd argument is the function to be applied or uses "x" and "y" to get the x or y coordinates, set's the value of the cells to this.
+Y <- init(r, 'y')
+par(mfrow=c(1,2)) #sets parameteres,means the figure will be drawn by rows, mfrow is always a vector, and you give it the row number and column number, so this means a 1 x 2 plot. actually, it's not clear to me how this influenced plot creation 
+plot(X, main='x') #main sets the title
+plot(Y, main='y')
+
+Z <- 2*X + 3*Y
+#plot it like above, kind of cool
+plot(Z)
+text(Z, cex=.75)
+contour(Z, add=T, labcex=1, lwd=2, col='red')
+
+```
+
+#Changing to a Stochastic Process
+Ways to get random numbers:
+-The sample function returns randomly selected values from a set that you provide (by default this is done without replacement
+-sometimes it is desireable to recreate exactly the same random sequence. Function set.seed allows you to do that
+
+```{r}
+#z = 2x + 3y + r; where r is a random value that can be -1 or +1
+#We need a random value for each cell of raster ‘r’, and assign these to a new RasterLayer with the same properties (spatial extent and resolution)
+
+set.seed(987) #I think 987 is a way of telling the algorithm for RNG where to begin
+s <- sample(c(-1, 1), ncell(r), replace=TRUE) # 1st argument is the vector to be used for random samples, here it's a list of -1 or 1. 2nd argument is the size of the sample to be taken, we're telling it to take as many cells as are in "r". they can be taken with replacement
+s[1:8]
+## [1] -1  1  1  1  1 -1 -1 -1
+R <- setValues(r, s) #setting values for our original raster "r", but we're assigning it to a new object called "R". the object is r, the values to be used are the sample s
+plot(R)
+Z <- 2*X + 3*Y + R
+plot(Z)
+text(Z, cex=.75)
+contour(Z, add=T, labcex=1, lwd=2, col='red')
+
+```
+
+#Function for the random process
+Random processes can make different patterns, but we want to use the same process multiple times. So, write a function for the process, so it can be used repeatedly.
+```{r}
+f <- function() {
+    s <- sample(c(-1, 1), ncell(r), replace=TRUE)
+    S <- setValues(r, s)
+    Z <- 2*X + 3*Y + S
+    return(Z)
+}
+
+#the function got run 4 different times with a different random number sequence
+set.seed(777)
+par(mfrow=c(2,2), mai=c(0.5,0.5,0.5,0.5)) #mai gives the margin size in inches, but I still don't really understand par
+for (i in 1:4) {
+    pattern <- f()
+    plot(pattern)
+    text(pattern, cex=.75)
+    contour(pattern, add=TRUE, labcex=1, lwd=2, col='red')
+}
+```
+
+#Q1: Use the examples provided above to write a script that follows the ‘thought exercise to fix ideas’ on page 98 of OSU. 
+(Use the same equation, but the values for s are randomly generated from -9-9)
+```{r}
+
+f <- function() {
+    s <- sample(c(-9:9), ncell(r), replace=TRUE)
+    S <- setValues(r, s)
+    Z <- 2*X + 3*Y + S
+    return(Z)
+}
+
+set.seed(345)
+
+
+par(mfrow=c(2,2), mai=c(0.5,0.5,0.5,0.5)) 
+for (i in 1:4) {
+    pattern <- f()
+    plot(pattern)
+    text(pattern, cex=.75)
+    contour(pattern, add=TRUE, labcex=1, lwd=2, col='red')
+}
+#from text: maps patterns created aren't random, the process creating them has a random element that makes the local chance component. I think of it as even though the general shape of the maps is similar at a large scale, the random process means there are small differences at a smaller scale.
+```
+
+#CSR/IRP Map
+-the process that plots the symbols is random, but the resulting pattern may not appear to be
+-random selection from a uniform distribution can give clustering
+
+#Q2. Use the example of the CSR points maps to write a script that uses a normal distribution, rather than a random uniform distribution (also see box ‘different distributions’; on page 99 of OSU).
+```{r}
+#Plot randomly from uniform distribution using numbers between 0-99:
+csr <- function(n, r=99, plot=FALSE) {
+    x <- runif(n, max=r) #runif generates random deviaes from the uniform distribution. n is the number of observations, max is the upper limit of the distribution, here it's 99
+    y <- runif(n, max=r)
+    if (plot) {
+        plot(x, y, xlim=c(0,r), ylim=c(0,r))
+    }
+}
+
+set.seed(0)
+par(mfrow=c(2,2), mai=c(.5, .5, .5, .5))
+for (i in 1:4) {
+    csr(50, plot=TRUE)
+}
+
+#Q2, Plot randomly from the normal distribution
+csr2 <- function(n, r=99, plot=FALSE) {
+    x <- rnorm(n, mean = 50, sd = 2) 
+    y <- rnorm(n, mean = 50, sd = 2)
+    if (plot) {
+        plot(x, y, xlim=c(0,r), ylim=c(0,r))
+    }
+}
+
+set.seed(0)
+par(mfrow=c(2,2), mai=c(.5, .5, .5, .5))
+for (i in 1:4) {
+    csr2(50, plot=TRUE)
+}
+
+#it appears that even drawing randomly on the normal distribution, all the points just cluster around the mean, whether it's 0, 50, or whatever, when the SD = 1. SD=2 makes the cluster slightly larger, but it's still true. That makes sense, in a normal distribution, ~96% of the values should be within 2 SDs of the mean.
+```
+
+#Q3. Do the generated chess boards look (positively or negatively) spatially autocorrelated?
+Positive spatial autocorrelation means clustering, things that are near to each other are more likely to have a similar value. With negative autocorrelation, things that are different are more likely to be near each other. 
+
+Just from looking at chess boards, the top right seems to be positively spatial autocorrelated for the black tiles, as they are mostly grouped together. The bottom right could be argued to be positively spatially autocorrelated for the white tiles, as the white tiles are mostly found clustered together. In both of these examples, there is clustering, and it is all in a similar part of the chessboard. I think the top left has no autocorrelation, it appears to be random. Finally, the bottom left seems to be negative autocorrelation, especially in the middle, where black and white tiles surround each other. In other words, tiles that look different than each other are touching each other. 
+
+This is really hard to determine by physically looking at data. I think there must be a way to actually analyze spatial autocorrelation.
+
+```{r}
+#create the random chess boards:
+r <- raster(xmn=0, xmx=1, ymn=0, ymx=1, ncol=8, nrow=8)
+p <- rasterToPolygons(r)
+
+chess <- function() {
+    s <- sample(c(-1, 1), 64, replace=TRUE)
+    values(r) <- s
+    plot(r, col=c('black', 'white'), legend=FALSE, axes=FALSE, box=FALSE)
+    plot(p, add=T, border='gray')
+}
+    
+set.seed(0)
+par(mfrow=c(2,2), mai=c(0.2, 0.1, 0.2, 0.1))
+for (i in 1:4) {
+    chess()
+}    
+
+#Function Moran somehow tells you about spatial autocorrelation, but I'm not sure what it says. Let's try:
+q <- raster(nrows=10, ncols=10)
+q
+q[] <- 1:ncell(q)
+
+Moran(q) #0.835, but I don't know what this number means
+    
+```
+I think to actually determine spatial autocorrelation, you need to know something about the cells themselves. For example, you need to either have a density or distance (neighbor) measurement. Just as we did in lab 3, you can calculate the nearest neighbor, then normalize the rows to get a weighted matrix. Here, the cells are just generated in a random order, but don't themselves have any values, so I don't think I can actually calculate anything.
+
+If I were going to calculate things, I could use Moran's I. This needs a couple values, including each features deviation from the mean (for each features value it subtracts the mean), and it needs a weighted matrix. Also, depending on what function I use to test this, some functions also return a p value, which will help interpret whether the Moran's value is statistically significant.
+
+#Q4. How would you, conceptually, statistically test whether the real chessboard used in games is generated by an independent random process?
+To statistically test whether any process (chessboard or otherwise) is generated by random processes, I would compare the observed frequencey with the theoretically expected frequency. Actually, the tests I would imploy to determine IRP are very similar to what I described above for testing for spatial autocorrelation.
+
+First, I would keep in the back of my mind that a normal chessboard demonstrates negative spatial autocorrelation, with equal avoidance/dispersion. Then, as discussed above, I need some way to estimate the intensity of the relationships, either using density-based or distance based measures. If I used density estimates, I could then compare my findings with a poissons distribution (=1), to say whether the process is not random. 
+
+BUT, as Elise pointed out, we have no actual data about the chessboard, so we don't have a distribution against which to measure significance. So, I would need to run simulations. As we did early in this lab, I could randomly generate a distribution for the data, and then use that as a way to generate my stastics. I think it would be best to use a uniform distribution here, as the normal distribution clusters around a mean, but the normal chessboard is the opposite: not clustered, but dispersed as much as possible.
+
+-From Elise: to do a stat test, we need a statistic and a measure of significance which you get from a distribution. We don't have a distribution, but we can simulate one.
