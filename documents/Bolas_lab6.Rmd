@@ -1,0 +1,444 @@
+---
+title: "Bolas_Lab6"
+author: Ellie Bolas, GEO200CN, spring 2017
+output: html_document
+---
+
+# Lab 6: Point patterns
+
+```{r, echo=FALSE, include=FALSE}
+	library(knitr)
+	opts_chunk$set(
+		fig.width  = 5,
+		fig.height = 5,
+		collapse   = TRUE
+	)
+	
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, eval = TRUE)
+```
+
+#Elise's Min-Lecture: Spatial Data in R
+##Reading in Data:
+-assign your import function call to a variable in order to use the layer(s) that you are importing
+-readOGR {rgdal} can do import raster and vector data, including shapefiles, .kmz files, etc. 
+-raster imports only 1 raster layer (1 variable)
+-brick imports multiple raster layers. If you have multi-banded images in one file, use brick.
+-stack imports only 1 layer from multiple files. if you have multi-banded images in multiple files, use stack.
+
+Avoid:
+{maptools} package bc it's not well maintained- (readShapePoints, readShapeLines, etc) don't work as well
+
+##R Classes
+-Raster classes: RasterLayer, RasterBrick, RasterStack
+  -we will mostly work with RasterLayers
+  -resolution: size of cells
+  -extent: size of the overall layer
+
+-SpatialPoint(Lines/Polygons)DataFrame
+-readOGR knows which one it should be, reads it in automatically
+  -features: how many points/polygons/lines
+  -variables: number of variables,how many columns of data
+  
+##Raster Data
+-Can treat raster data like a vector, can do all the arthimetic
+-can extract or modify values using values()
+-when you add values, they fill in by row, not column (opposite of matrices)
+
+##Vector Data
+-anything you can do to a dataframe, you can do to a spatialdataframe
+-it's made of 2 parts, the spatial data and the data.frame
+-you shouldn't have to extract data out of the object
+
+##Projections
+-longitude and latitude is the Plate Carree Projection
+-there are global projections that preserve or distort shape, area, distance, direction
+-can also use local projections which preserve all four really well within a small area (California)
+-if data doesn't have a projection, to specify the projection, use crs(object) <-proj4string of projection
+-coord.ref tells use the proj4string
+-if it already has a projection, you need to transform it
+
+
+
+Please read http://rspatial.org/rosu/rst/Chapter5.html
+
+Download the data from the website.
+
+Answer the numbered questions in a single *R Markdown* file + HTML.
+
+#5.1 Intro
+```{r}
+#read in data
+library(raster)
+library (rgdal)
+library(maptools)
+
+#tried to import data with relative path (like usual), but no luck. Working with relative paths requires a strong understanding of file structure, so absolute paths at this point are easier to work with.
+datapath <- 'C:/Users/ebola/Google Drive/Git/GEO200CN/data/'
+city <- readRDS(file.path(datapath, "city.rds"))
+crime <- readRDS(file.path(datapath, "crime.rds"))
+crime
+
+#map
+plot(city, col='light blue')
+points(crime, col='red', cex=.5, pch='+')
+
+#table
+tb <- sort(table(crime$CATEGORY))[-1] #for some reason, we removed the first record, "hate crimes," from the table, that's why we added the -1 
+tb
+
+#retrieve coordinates
+xy1 <- coordinates(crime)
+dim(xy1)
+xy <- unique(xy1) #here unique removes any duplicate coordinates, so that means duplicate crime locations are removed
+dim(xy)
+head(xy)
+
+
+```
+
+#5.2 Basic Stats
+```{r}
+#mean and standard deviation
+mc <- apply(xy, 2, mean) #taking the mean of the columnes (#2)
+mc
+sd <- sqrt(sum((xy[,1] - mc[1])^2 + (xy[,2] - mc[2])^2) / nrow(xy))
+
+plot(city, col='light blue')
+points(crime, cex=.5)
+
+#points(mc, pch='*', col='red', cex=5) for some reason mc can't just be plotted, the two columns have to be merged in cbind. maybe because mc is just numbers right now, not recognizable as points
+points(cbind(mc[1], mc[2]), pch='*', col='red', cex=5)
+
+# make a circle  by dividing the circle in 360 points and compute bearing in radians
+bearing <- 1:360 * pi/180
+cx <- mc[1] + sd * cos(bearing)
+cy <- mc[2] + sd * sin(bearing)
+circle <- cbind(cx, cy)
+lines(circle, col='red', lwd=2)
+```
+
+#5.3 Density
+```{r}
+CityArea <- area(city)
+#It is an approximation because area is computed as the height (latitudial span) of a cell (which is constant among all cells) times the width (longitudinal span) in the (latitudinal) middle of a cel
+
+dens <- nrow(xy) / CityArea
+CityArea
+dens
+
+#Question 1a:What is the unit of ‘dens’?
+city
+xy
+#city's coordinate system are in ft, and xy is the coordinates of crime, so the units are crimes/ft^2
+
+#Question 1b:What is the number of crimes per square km?
+convertft <- function(x){
+  ftkm <-x * 0.0003048
+  return(ftkm)
+}
+
+convertft(1)
+denskm <- nrow(xy)/convertft(276744329)
+denskm
+#0.014321 crimes/square km
+
+#make quadrates for city
+#make city into a raster layer object with resolution of 1000
+r <- raster(city)
+res(r) <- 1000
+r
+
+#make r into polygonsn
+r <- rasterize(city, r) #rasterize turns something from an object type to raster cells. city is the points, and each are assigned to a grid cell. r is the actual raster object. basically, we are adding values to this object so it can be plotted
+plot(r)
+quads <- as(r, 'SpatialPolygons')#as forces r to be in the spatial polygons data class
+plot(quads, add=TRUE)
+points(crime, col='red', cex=.5)
+
+#now we are counting the number of crime events. here, because we are using the crime data set, and not xy, it includes all crime events, including multiple events at a single data point
+
+#The number of events in each quadrat can be counted using the ‘rasterize’ function
+nc <- rasterize(coordinates(crime), r, fun='count', background=0) 
+plot(nc)
+plot(city, add=TRUE)
+ncrimes <- mask(nc, r) #here, mask takes the nc raster object, and uses the r spatial object as the mask. the cells not covered in the spatial object are NA
+plot(ncrimes)
+plot(city, add=TRUE)
+
+f <- freq(ncrimes, useNA='no') #frequency that the count of crimes/cell occurs
+f
+plot(f, pch=20) #shows the frequencies of the count. note the single count of 214, which was the only green cell in the map
+
+#average #case/quadrat
+# number of quadrats in total (second column)
+quadrats <- sum(f[,2])
+quadrats
+quads #just checking that quadrats= quads. We didn't need to sum f, b/c it should be the same number of polygons/cells
+# number of cases
+cases <- sum(f[,1] * f[,2])
+mu <- cases / quadrats
+mu #9.261484
+
+
+ff <- data.frame(f)
+colnames(ff) <- c('K', 'X') #K= number of crimes. X= number of cells with this number of crimes
+ff
+#all these next columns are calculated to help get observed variance
+ff$Kmu <- ff$K - mu 
+ff$Kmu2 <- ff$Kmu^2
+ff$XKmu2 <- ff$Kmu2 * ff$X
+head(ff)
+
+#observed variance
+s2 <- sum(ff$XKmu2) / (sum(ff$X)-1)
+s2
+
+VMR <- s2 / mu
+VMR #29.86082
+
+
+```
+##Question 2:What does this VMR score tell us about the point pattern? 
+The VMR tells us two things. First, if the pattern were random, we expect variance=mean, and the VMR = 1. mu = `r mu`, s2 = `r s2`, and VMR = `r VMR`. Further, because the VMR is greater than indicates a lot of variance in the data, and that the data is clustered.
+
+#5.3 Distance-based Measures
+```{r}
+#dist computes and returns a distance matrix that gives the distance between rows of matric data. 
+xy
+dim(xy)
+d <- dist(xy)
+class(d)
+d
+dm <- as.matrix(d)
+dm
+dm[1:5, 1:5] #I don't understand what this did
+diag(dm) <- NA #replace 0 with NAs (distance of point to itself)
+dm[1:5, 1:5]
+
+#to get minimum distance from one point to another
+dmin <- apply(dm, 1, min, na.rm=TRUE)
+head(dmin)
+
+#mean nearest neighbor distance
+mdmin <- mean(dmin)
+mdmin
+
+#which point is the nearest neighbor to the other points?
+wdmin <- apply(dm, 1, which.min)
+wdmin
+
+#finding and plotting the further away places
+plot(city)
+points(crime, cex=.1)
+ord <- rev(order(dmin))
+
+far25 <- ord[1:25]
+neighbors <- wdmin[far25]
+
+points(xy[far25, ], col='blue', pch=20)
+points(xy[neighbors, ], col='red')
+
+# drawing the lines, easiest via a loop
+for (i in far25) {
+    lines(rbind(xy[i, ], xy[wdmin[i], ]), col='red')
+}
+```
+
+#G Function
+```{r}
+#g function is a cumulative frequency distribution of the nearest neighbor distances
+max(dmin)
+
+# get the unique distances (for the x-axis)
+distance <- sort(unique(round(dmin)))
+
+# compute how many cases there with distances smaller that each x
+Gd <- sapply(distance, function(x) sum(dmin < x))
+
+# normalize to get values between 0 and 1
+Gd <- Gd / length(dmin)
+
+plot(distance, Gd)
+
+# using xlim to exclude the extremes
+plot(distance, Gd, xlim=c(0,500))
+
+#show values in a more standard way, write a function that plots, that's cool
+stepplot <- function(x, y, type='l', add=FALSE, ...) {
+    x <- as.vector(t(cbind(x, c(x[-1], x[length(x)]))))
+    y <- as.vector(t(cbind(y, y)))
+  if (add) {
+     lines(x,y, ...)
+  } else {
+       plot(x,y, type=type, ...)
+  }
+}
+
+stepplot(distance, Gd, type='l', lwd=2, xlim=c(0,500))
+#tells you that .5 of nearest neighbors are ~ 90 m or less away
+```
+
+#F function
+```{r}
+#for F function, use centers of raster cells (the quadrats). f function is opposite of g, funds distance between an event and a set of random points
+
+# get the centers of the 'quadrats' (raster cells)
+p <- rasterToPoints(r) #turns quadrats of city into points
+p
+
+# compute distance from all crime sites to these cell centers
+d2 <- pointDistance(p[,1:2], xy, longlat=FALSE) #selecting columnes 1-2 of p (coordinates for city), calculating distance to all of xy (coordinates of crime), longlat=false means it's euclidean distance
+
+# the remainder is similar to the G function
+Fdistance <- sort(unique(round(d2)))
+mind <- apply(d2, 1, min)
+Fd <- sapply(Fdistance, function(x) sum(mind < x))
+Fd <- Fd / length(mind)
+plot(Fdistance, Fd, type='l', lwd=2, xlim=c(0,3000))
+
+#expected distribution
+ef <- function(d, lambda) {
+  E <- 1 - exp(-1 * lambda * pi * d^2)
+}
+expected <- ef(0:2000, dens)#uses dens, crimes/area
+
+#plot g and f on same plot
+plot(distance, Gd, type='l', lwd=2, col='red', las=1,
+    ylab='F(d) or G(d)', xlab='Distance', yaxs="i", xaxs="i")
+lines(Fdistance, Fd, lwd=2, col='blue')
+lines(0:2000, expected, lwd=2)
+
+legend(1200, .3,
+   c(expression(italic("G")["d"]), expression(italic("F")["d"]), 'expected'),
+   lty=1, col=c('red', 'blue', 'black'), lwd=2, bty="n")
+```
+##Question 3: What does this plot suggest about the point pattern?
+
+Using distance-based point measures give us an idea of the relationships between the events (points). This plot shows that the events are clustered. G shows how close together events are in the area, but F shows how far events are from random locations. The G function rises sharply over a short distance to demonstrate that most events have a close nearest neighbor. The F function rises more slowly at first, but rapidly at long distances to demosntrate that there are portions of the study area that are empty with long distances to the next event.
+
+#K function
+```{r}
+distance <- seq(1, 30000, 100)
+Kd <- sapply(distance, function(x) sum(d < x)) # takes a while
+Kd <- Kd / (length(Kd) * dens)
+plot(distance, Kd, type='l', lwd=2)
+```
+
+#Question 4: Create a single random pattern of events for the city, with the same number of events as the crime data (object xy). Use function ‘spsample’
+```{r}
+#spsample samples random locations using random methods. need to be within a grid, polgon, or line
+city
+dim(city)
+dim(xy)
+plot(city, col='light blue')
+points(spsample(city, n= 1208, "random"), pch = 3)
+```
+
+
+#Question 5: Compute the G function, and plot it on a single plot, together with the G function for the observed crime data, and the theoretical expectation (formula 5.12).
+```{r}
+#g function for the random pattern
+#this keeps failing to knit. It must have something to do with a difference in the length of thet crime data points with and without repeat eventst. The question above isn't clear if I should include repeat events or not. I just not repeating events, but maybe that is why it's failing to knit?
+
+#let's try with 
+
+
+#first, get distances between all the points
+random<- spsample(city, n= 1208, "random")
+random
+randomdf <- as.data.frame(random)
+class(randomdf)
+randomd <-dist(randomdf)
+class(randomd)
+
+#now put these distances into a matrix
+randommx <- as.matrix(randomd)
+randommx
+
+#now making matrix clean, change 0 to NA
+randommx[1:5, 1:5] 
+diag(randommx) <- NA
+randommx[1:5, 1:5]
+
+#to get minimum distance from one point to another
+randommin <- apply(randommx, 1, min, na.rm=TRUE)
+head(randommin)
+
+
+#g function of random
+
+# get the unique distances (for the x-axis)
+randomdistance <- sort(unique(round(randommin)))
+
+# compute how many cases there with distances smaller that each u
+Drandom <- sapply(randomdistance, function(u) sum(randommin < u))
+
+# normalize to get values between 0 and 1
+Drandom <- Drandom / length(randommin)
+
+#plot random's g function
+plot(randomdistance, Drandom, xlim=c(0,500))
+
+#plotting random G, crime G, and expected
+
+
+plot(randomdistance, Drandom,  xlim=c(0,500), type = 'l', lwd=2, col='red', las = 1, ylab= 'G(random) or G(crime)', xlab= 'Distance', yaxs = "i", xaxs = "i")
+lines(distance, Gd, lwd= 2, col='blue')
+lines(0:2000, expected, lwd=2)
+
+legend(1200, .3,
+   c(expression(italic("random")["crime"]), expression(italic("random")["crime"]), 'expected'),
+   lty=1, col=c('red', 'blue', 'black'), lwd=2, bty="n")
+#not sure why the legend didn't work. But, not surprising, the random and expected were almost identical
+
+```
+
+
+#Question 6: (Difficult!) Do a Monte Carlo simulation (page 149) to see if the ‘mean nearest distance’ of the observed crime data is significantly different from a random pattern. Use a ‘for loop’. First write ‘pseudo-code’. That is, say in natural language what should happen. Then try to write R code that implements this.
+
+To do an MC simulation, I would need to make a function that calculate thousands of random patterns from the city data, with the same number of points as the crime data. In other words, I need to dupicate random<- spsample(city, n= 1208, "random") many times. Then, for each duplication, I need to caluclate the average minimum nearest neighbor distance. Then, all of these avg.dmin get plotted on a histogram. Last, I compare the crimes average minimum nearest neighbor distance to what is plotted. Depending on how far it is from the mean of the histogram, that gives us an idea of how 'uncommon' it is, or how likely it is to be random.
+
+#About For Loops
+
+purr package avoid them, it's like using lapply on 100 models
+
+Set-up:
+-for(i in #some list or function of a list) #i is the place holder, that will pick out the list in sequence. then you need a print message.
+
+-make a vector of the things that you want to use
+
+-for print message, sometimes you are making a bunch of different files/maps, whatever. So, have it print "done, file saved" and then save the file, don't need to see it.
+
+-choose list that I'm operating on, the function that I want to have happen, and what output I want (print, save, assign to environment)
+
+##Step 1, my list would be the number of times I want to run the loop, and the function is spsample, and the output is a data frame (and then a matrix)
+
+```{r}
+
+for(i in c(1960:1970)){print(i)}
+
+#step 1: df of city's data as random
+for(i in c(1:5)){
+  print(i <- as.data.frame(spsample(city, n= 5, "random")))
+} #using n=5 to make things more manageable!
+
+
+```
+
+##step 2: distances matrix
+
+The list would still be 1-5, function is distance, output is as matrix, but I think I need to nest this so I can make sure to use what the first loop made
+```{r}
+for(i in c(1:5)){
+   print(as.matrix(dist(as.data.frame(spsample(city, n= 5, "random")))))
+}
+```
+Now I just need to turn 0->NA, then I can get the average minimum distance for each matrix, then this would get plotted. 
+
+#Spatstate Packages
+From text: Population density could establish the “population at risk” (to commit a crime) for certain crimes, but not for others. Or, it could just be that more people in a close area means more crimes.
+
+
+#Question 7: Why is the result surprising, or not surprising?
+
+These results aren't surprising. I'm not surprised to see 'drunk in public' as more common in densly populated areas. Nor am I surprised that arson has a correlation with being drunk. I guess I feel like this assessment skips some ideas though, for example, is this the city center, are there a high concentration of bars there? Are there abandoned buildings? Based on previous maps of arson, I'm not sure that trying to correlate these two crimes made a lot of sense.

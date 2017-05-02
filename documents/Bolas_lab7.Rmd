@@ -1,0 +1,144 @@
+---
+title: "Bolas_Lab7"
+author: Ellie Bolas, GEO200CN, spring 2017
+output: html_document
+---
+###Elise Mini-Lecture
+x=longitude
+y=latitude
+
+-Using euclidean distance to find distance between lat long points, but this is wrong. euclidean should not be used for lat long because euclidean distance is supposed to be used on a sphere, not a flat plane. but, here we use this because of the function we will use
+
+cols <-apply(D,1,order) <-figure out what this code does. This code touches on nearest neighbors and indexes apply on a distance matrix over the rows using the function "order"
+
+
+# Lab 7: Distance + Spatial Influence
+In this lab you will continue to practice point pattern analysis with R. If the concepts you are working with feel unclear or unfamiliar that’s a good hint that you might want to re-review Chapt 5+6 of OSU and your lecture notes.
+
+Start by reading and following along with the Distance section, and the first three subsections (Adjacency, Two Nearest Neighbors, Weight Matrix) of the Spatial Influence section of Chapt 2. Scale and Distance in the Spatial Data Analysis on RSpatial. Then respond to the questions below. [see the lab handout for greater details]
+
+#1. Distance 
+[http://rspatial.org/analysis/rst/2-scale_distance.html#distance]
+###a) [Question 4 in the text] Show R code to make a cluster dendogram summarizing the distances between these six sites, and plot it. See ?hclust
+[Remember dendogram are a tree of branching diagram that illustrates clustering or similarity]
+```{r}
+A <- c(40, 43)
+B <- c(101, 1)
+C <- c(111, 54)
+D <- c(104, 65)
+E <- c(60, 22)
+F <- c(20, 2)
+pts <- rbind(A, B, C, D, E, F)
+pts
+dis<- dist(pts)
+D <- as.matrix(dis)
+round(D)
+
+#cluster dendogram
+hc <- hclust(dis, method = "complete", members = NULL)
+plot(hc)
+```
+
+###b) [Question 5 in the text] What is the unit of the values in “gdis”? See ?pointDistance
+
+-What if pts were in long/lat. Can't use dist function. Intead, use pointDistance function from the raster package, which calculates the geographic distance in a WGS ellipsoid
+
+-Answer: distance is given as meters or map-units, depending on what the input is. I think here it's meters.
+```{r}
+library(raster)
+gdis <- pointDistance(pts, lonlat=TRUE) #here we are pretending that the points are in lat long and finding the distance between them
+gdis
+
+```
+
+
+#2.Spatial Influence [http://rspatial.org/analysis/rst/2-scale_distance.html#spatial-influence]
+###a) In preparing the two nearest neighbors matrix, why do you select columns 2 and 3, and not column 1?
+```{r}
+#Adjacency
+#take D, which is a matrix of all the distances, then asks which are the nearest neighbors (those within 50 m, and put them in a)
+a <-  D < 50
+a #this tells us which of these distances are under 50 m
+
+diag(a) <- NA #set diagonals to NAs
+Adj50 <- a * 1 #set true/false to 1/0
+Adj50
+
+cols <- apply(D, 1, order) #apply the function "order" to matrix D over rows (1)
+# we need to transpose the result
+cols <- t(cols)
+cols2 <- cols[, 1:3]
+cols2
+cols3 <- cols[, 2:3]
+cols3
+
+```
+Answer: This matrix shows you the two neighbors closest to each element. For example, for A, the 5th and 6th (E & F) are closest. No need to include the first column, because that just tells you that A is closest to A, B is closest to B, and so on. A is not it's own neighbor, so we leave it out.
+
+
+#3. Distance and Weight Matrix UCD Places
+###a) Using the same UCD places we used in Lab4 [UCplaces.csv] you will calculate a binary distance matrix that defines neighbors as places closer than 500 meters.
+###b) Which places are defined as neighbors to Hunt Hall?
+
+Hint: if the matrix output from ?pointDistance only returns half the matrix you can calculate the symmetrical matrix fairly simply with the forceSymmetric function in the Matrix package. See ?forceSymmetric for details
+
+
+```{r}
+datapath <- 'C:/Users/ebola/Google Drive/Git/GEO200CN/data/'
+UCplaces <- read.csv(file.path(datapath, "UCplaces.csv"))
+UCplaces
+#UC<- UCplaces[,2:3]
+#UC
+#the problem is that the data reads in as latlon, I need the order of the columns reversed
+UC<- UCplaces[,3:2]
+UC
+UCdis <- pointDistance(UC, lonlat=TRUE)
+UCdis
+
+
+#neighbors within 500m
+b <- UCdis < 500
+b
+
+#make it binary
+diag(b) <- NA
+Adj500 <- b * 1
+Adj500
+library(Matrix)
+symAdj500 <- forceSymmetric(Adj500, "L")
+symAdj500
+
+```
+Answer: Neighbors of Hunt Hall: 
+Hunt hall is 1, it's nearest neighbor (within 500 m) is 2, MU Coffee House. 
+
+###Bonus) Calculate a continuous value matrix for the same data, with distances measured in meters, and where rows sum to 1.
+
+###Spatial Weights Matrix
+The smaller the number, the farther away something is. 
+```{r}
+UCdis
+D <- forceSymmetric(UCdis, "L")
+D
+W <- 1 / D
+round(W, 4)
+W[!is.finite(W)] <- NA #get's rid of Inf values. these happened bc 1/0 = inf
+
+#calculate row totals
+rtot <- rowSums(W, na.rm=TRUE)
+rtot
+
+#normalize the rows by making them equal to 1
+W2 <- W / rtot
+rowSums(W2, na.rm=TRUE)
+W2 #tis is a weighted spatial matrix (by row)
+```
+
+
+
+Upload to smartsite an Rmarkdown and HTML file. 
+
+Due: Wednesday, May 3, 9a
+
+
+
