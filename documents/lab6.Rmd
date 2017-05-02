@@ -1,0 +1,23 @@
+---
+title: "Lab6"
+author: GEO200CN, spring 2017
+output: html_document
+---
+
+# Lab 6: Point patterns
+
+```{r, echo=FALSE, include=FALSE}
+	library(knitr)
+	opts_chunk$set(
+		fig.width  = 5,
+		fig.height = 5,
+		collapse   = TRUE
+	)
+```
+
+Please read http://rspatial.org/rosu/rst/Chapter5.html
+
+Download the data from the website.
+
+Answer the numbered questions in a single *R Markdown* file + HTML.
+
