@@ -33,7 +33,7 @@ x <- list(a=1:10, b=rnorm(10, 20, 5),
 lapply(x, mean, na.rm=TRUE)
 
 ##Example 2
-lapply(1:10, function(i) runif(20, min=0, max=i))
+#lapply(1:10, function(i) runif(20, min=0, max=i))
 
 
 ##Example 3
@@ -41,9 +41,9 @@ y <- data.frame(replicate(8, sample(1:100, 10)))
 #y is just some data being created
 
 lapply(1:nrow(y), function(i) { #this is a for loop converted into an lapply. i want to do this for each row in y. i is going to take on the values from 1 to the number of rows in i. function(i) says: a function is coming next, and i is going to be the input of the function
-	row <- unlist(y[i,]) #each row will be converted to a vector using unlist
-	rowmean <- mean(row) #mean of each row
-	(row-rowmean)^2/length(row) #finding mean square error for each row in df
+#row <- unlist(y[i,]) #each row will be converted to a vector using unlist
+#rowmean <- mean(row) #mean of each row
+#(row-rowmean)^2/length(row) #finding mean square error for each row in df
 })
 
 ```
