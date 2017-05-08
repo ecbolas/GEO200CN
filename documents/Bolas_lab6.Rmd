@@ -247,13 +247,17 @@ for (i in far25) {
 #G Function
 ```{r}
 #g function is a cumulative frequency distribution of the nearest neighbor distances
+
+#x axis is distance to a point
 max(dmin)
 
-# get the unique distances (for the x-axis)
+# get the unique distances (for the x-axis). this means, find the distances that the points are being "binned in," as in number of points within 10m, 15m, 20m, etc.
 distance <- sort(unique(round(dmin)))
+distance
 
-# compute how many cases there with distances smaller that each x
+# compute how many cases there with distances smaller that each x. So, this means, how many points have another point within each point along x. as in, there are 10 points that have another point within 10m
 Gd <- sapply(distance, function(x) sum(dmin < x))
+
 
 # normalize to get values between 0 and 1
 Gd <- Gd / length(dmin)
@@ -280,7 +284,9 @@ stepplot(distance, Gd, type='l', lwd=2, xlim=c(0,500))
 
 #F function
 ```{r}
-#for F function, use centers of raster cells (the quadrats). f function is opposite of g, funds distance between an event and a set of random points
+#for F function, use centers of raster cells (the quadrats). f function does the same thing as d, but uses a random point as each event, then finds the number of points within certain distances to your random point.
+
+#use f and g together to understand your data!
 
 # get the centers of the 'quadrats' (raster cells)
 p <- rasterToPoints(r) #turns quadrats of city into points
@@ -318,10 +324,10 @@ Using distance-based point measures give us an idea of the relationships between
 
 #K function
 ```{r}
-distance <- seq(1, 30000, 100)
-Kd <- sapply(distance, function(x) sum(d < x)) # takes a while
+distanceK <- seq(1, 30000, 100)
+Kd <- sapply(distanceK, function(x) sum(d < x)) # takes a while
 Kd <- Kd / (length(Kd) * dens)
-plot(distance, Kd, type='l', lwd=2)
+plot(distanceK, Kd, type='l', lwd=2)
 ```
 
 #Question 4: Create a single random pattern of events for the city, with the same number of events as the crime data (object xy). Use function ‘spsample’
@@ -340,13 +346,12 @@ points(spsample(city, n= 1208, "random"), pch = 3)
 #g function for the random pattern
 #this keeps failing to knit. It must have something to do with a difference in the length of thet crime data points with and without repeat eventst. The question above isn't clear if I should include repeat events or not. I just not repeating events, but maybe that is why it's failing to knit?
 
-#let's try with 
-
-
+dim(xy)
 #first, get distances between all the points
 random<- spsample(city, n= 1208, "random")
 random
 randomdf <- as.data.frame(random)
+randomdf
 class(randomdf)
 randomd <-dist(randomdf)
 class(randomd)
@@ -370,8 +375,8 @@ head(randommin)
 # get the unique distances (for the x-axis)
 randomdistance <- sort(unique(round(randommin)))
 
-# compute how many cases there with distances smaller that each u
-Drandom <- sapply(randomdistance, function(u) sum(randommin < u))
+# compute how many cases there with distances smaller that each x
+Drandom <- sapply(randomdistance, function(x) sum(randommin < x))
 
 # normalize to get values between 0 and 1
 Drandom <- Drandom / length(randommin)
@@ -380,7 +385,6 @@ Drandom <- Drandom / length(randommin)
 plot(randomdistance, Drandom, xlim=c(0,500))
 
 #plotting random G, crime G, and expected
-
 
 plot(randomdistance, Drandom,  xlim=c(0,500), type = 'l', lwd=2, col='red', las = 1, ylab= 'G(random) or G(crime)', xlab= 'Distance', yaxs = "i", xaxs = "i")
 lines(distance, Gd, lwd= 2, col='blue')
@@ -400,7 +404,7 @@ To do an MC simulation, I would need to make a function that calculate thousands
 
 #About For Loops
 
-purr package avoid them, it's like using lapply on 100 models
+purr package avoids them, it's like using lapply on 100 models
 
 Set-up:
 -for(i in #some list or function of a list) #i is the place holder, that will pick out the list in sequence. then you need a print message.
