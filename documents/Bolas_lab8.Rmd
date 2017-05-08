@@ -1,0 +1,259 @@
+---
+title: "Bolas_Lab8"
+author: Ellie Bolas, GEO200CN, spring 2017
+output: html_document
+---
+#Elise Mini-Lecture: Functionals!
+(apply, lapply, sapply, vapply, and mapply)
+
+###Vector vs. List
+-vector is 1 dimensional, can only contain one data type at a time, and it has to be a simple thing (can't be a df)
+-list: the data type that you can put anything into, and you can mix the types of data that go into it
+
+###Functionals
+-A function that takes a function as an input and returns a vector, list, matrix, or df as an output
+
+-apply (X (matrix or df), Margin (1=rows, 2=columns), Function)
+  output:vector
+  can only do 2 things: apply a function to the rows of a df or matrix or to the columns of a df or matrix
+
+-lappaly (X(vector or list), function)
+  applies that function to each element of the vector/list
+  output: list
+  -use this instead of a for loop: the input vector is 1:5 (how many times you want something to happen), whatever you would put in the for loop goes in the function section. This is because for loops force things to be done sequentially. It does 1, then 2, then 3- it takes longer.
+  Times to use a for loop: have an object that you need to modify, and the next run of the for loop depends on the previous run. 
+  -Monte Carlo can be done with lapply, but it makes more sense
+  lapply will apply any function to a vector or list of inputs, no restricution to what kind of inputs those are (list of df, characters, doesn't matter)
+  
+```{r}
+##Example 1
+x <- list(a=1:10, b=rnorm(10, 20, 5), 
+              c=sample(c(TRUE, FALSE, NA), 10, replace=TRUE))
+
+lapply(x, mean, na.rm=TRUE)
+
+##Example 2
+lapply(1:10, function(i) runif(20, min=0, max=i))
+
+
+##Example 3
+y <- data.frame(replicate(8, sample(1:100, 10)))
+#y is just some data being created
+
+lapply(1:nrow(y), function(i) { #this is a for loop converted into an lapply. i want to do this for each row in y. i is going to take on the values from 1 to the number of rows in i. function(i) says: a function is coming next, and i is going to be the input of the function
+	row <- unlist(y[i,]) #each row will be converted to a vector using unlist
+	rowmean <- mean(row) #mean of each row
+	(row-rowmean)^2/length(row) #finding mean square error for each row in df
+})
+
+```
+
+-sapply: very similar to lapply, but instead of returning a list(like lapply does), it will try to return a vector or matrix
+  be careful here, it can give you something different out than you put in. 
+  
+-vapply: solution to sapply. you tell it what output you want. Very useful when writing functions.
+```{r}
+vapply(1:4, function(i) (1:4)^i, c(id=0, squared=0, cubed=0, fourth=0))
+#raising 1-4 to the power of i, each needs to be returned as a numeric vector c(id=0) is what tells it this
+```
+
+-map and mapply: functionals that all multiple inputs, for example two or more lists or dfs to process in parallel
+  -different order! function comes first, then the data
+```{r}
+##Example 1: weighted means
+
+xs <- replicate(5, runif(10), simplify = FALSE) #values
+ws <- replicate(5, rpois(10, 5) + 1, simplify = FALSE) #weights
+
+Map(weighted.mean, xs, ws)
+
+##Example 2: Matrix multiplication
+
+a <- matrix(1:25, nrow=5)
+b <- matrix(26:50, nrow=5)
+
+index <- expand.grid(1:ncol(b), 1:nrow(a))
+
+m <- mapply(function(i,j) { #function i,j has two inputs, two arguments
+		sum(a[i,] * b[,j])
+	}, index[,1], index[,2])
+
+```
+
+
+# Lab 8: Spatial Influence + Spatial Autocorrelation
+In this lab you will work with area spatial patterns and calculate various measures of spatial autocorrelation with R. You will be working with external/lux.shp an example shapefile of the Cantons of Luxemburg, which comes loaded with the raster package. 
+
+Read and follow along with the Spatial influence for polygons subsection, and then all of the Spatial Autocorrelation chapter, and respond to the questions below. [see the lab handout for greater details]
+
+#1. Spatial influence for polygons 
+[http://rspatial.org/analysis/rst/2-scale_distance.html#spatial-influence-for-polygons]
+
+###load data and libraries
+```{r}
+library(raster)
+p <- shapefile(system.file("external/lux.shp", package="raster"))
+#install.packages("spdep")
+library(spdep)
+```
+
+
+```{r}
+#rook's case neighbors
+#poly2nb builds a neighbors list from polygons with contiguous boundaries. First argument is the polygons, second are the row names that are the region id, for queen, if true than a single shared point meets the conditions (queen's case). If false, then more than one point required (although this doesn't make a line.)
+p
+plot(p)
+pdf <- as.data.frame(p) #plotted by district(?), not county
+wr <- poly2nb(p, row.names=p$ID_2, queen=FALSE)
+wr
+
+#nb2mat generates a weights matric for a neighbors list. 1st argument is the neighbors list (from poly2nb), style refers to the coding scheme: B means basic binary, W is row standardized, C is global standardized. zero.policy=TRUE means weights list includes zero-length weights
+wm <- nb2mat(wr, style='B', zero.policy = TRUE)
+dim(wm)
+wm
+
+wm1 <- nb2mat(wr, style='W', zero.policy = TRUE)
+wm1
+wm2 <- nb2mat(wr, style='C', zero.policy = TRUE)
+wm2
+wm3 <- nb2mat(wr, style='S', zero.policy = TRUE)
+wm3
+```
+
+##a) When you create the matrix from the neighbors list [wm <- nb2mat(wr, style='B', zero.policy = TRUE)] what coding scheme is indicated by style ‘B’?
+
+-style B means the coding scheme of the matrix is binary. A 1 indicates that the region indicated by the matrix is a neighbor, and 0 indicates the region in the matrix is not a neighbor, or is absent based on the neighbor criteria in the neighbor list. Here, the criteria was the rook's case (or not the queen's), meaning that a neighbor polygons had to touch at more thatn one point. 
+
+##b) And for the other styles? 
+-Style W means that each row of the matrix sums to 1, so the neighbor relationships have been weighted differently in each row to reflect that. One problem with this style is that in rows with fewer neighbors, they have a higher weight.
+-Style C "globally standardized," or means each neighbor relationship in the matrix gets the same weight. The matrix is 12 x 12, with 46 neighbor relationships. When the fraction (.2608) is multiplied by 46, the result is 12. The weighting of the relatinships is equal, and reflects the number of total polygons being assessed.
+-Style S combines covariance and the number of objects being assessed.  It is a way of incorporating Moran's I into the matrix. It first looks at the way the two objects being compared differ from the mean, and then then weighs that by how close in space the two objects are, and finally takes into account number of objects in the matrix.
+
+
+#2. Spatial Autocorrelation >> Adjacent polygons
+[http://rspatial.org/analysis/rst/3-spauto.html#adjacent-polygons]
+
+Determining which polygons are "near" and how to quantify that
+```{r}
+q <- p[p$NAME_1=="Diekirch", ] #only taking the rows with "Dierkirch" in the Name_1 column
+q$value <- c(10, 6, 4, 11, 6) #added a list of values to those elements
+data.frame(q)
+w <- poly2nb(q, row.names=q$ID)
+class(w)
+w
+summary(w)
+str(w)
+plot(q, col='gray', border='blue', lwd=2)
+xy <- coordinates(q)
+plot(w, xy, col='red', lwd=2, add=TRUE)
+wwm <- nb2mat(w, style='B')
+wwm
+```
+
+##a) [Question 1 in the text] Explain the meaning of the first 5 lines returned by str(w)
+The weights matrix and the plotted relatioships help interpret the first 5 lines. They mean that polygon 1 has 3 relationships, with 2,4, & 5. Polygon 2 has 4 relationships, with 1,3,4, & 5. Polygon 3 has two relationships, with 2 & 5. Polygon 4 has 2 relationships, with 1 & 2. Polygon 5 has 3 relationships, with 1,2, & 3. The way it is written is confusing, but I believe it is listed in order from 1-5, and that in using [1:3], 1 refernces the originator polygon (always 1, because that's the implied list order), and 3 tells the number of links, then the polygons it is linked to are listed.
+
+#3. Spatial Autocorrelation >> Moran’s i
+[http://rspatial.org/analysis/rst/3-spauto.html#compute-moran-s-i] 
+ 
+##calculate Moran's I by hand
+```{r}
+n <- length(q) #number of observations
+n
+
+y <- q$value #get the values added to the polygons
+ybar <- mean(y) 
+
+#(yi-ybar)(yj-ybar)
+dy <- y - ybar #this is the variance of y as compared to the mean
+dy
+g <- expand.grid(dy, dy) #makes a df with 1 row for each combination of the supplied vectors, giving variance for each polygon
+g
+yiyj <- g[,1] * g[,2]
+
+#or make a list of dy 2 times, then multiply
+yi <- rep(dy, each=n) #repeats each value 5 times (b/c that's how many there were in dy)
+yi
+yj <- rep(dy)
+yj #just dy
+#yiyj <- yi * yj
+
+pm <- matrix(yiyj, ncol=n) #matrix of paired values
+pmw <- pm * wwm #sets values to zero for non-adjacent pairs
+pmw
+#sum all of it, gives top half of the second fraction
+spmw <- sum(pmw)
+spmw
+
+#divide by sum of only the weights
+smw <- sum(wwm)
+sw  <- spmw / smw #this is the entire second fraction in moran's i
+
+#now inverse variance of y, the first fraction
+vr <- n / sum(dy^2)
+MI <- vr * sw
+MI #the value you get in the absence of spatial correlation, if the data is random. as n get's big, MI approaches 0
+
+```
+
+##a) plot the density curve for the Moran’s i p-value Monte Carlo calculation. 
+```{r}
+#moran's function
+ww <-  nb2listw(w, style='B')#gives weights to a list of neighbors
+ww
+#moran's function: 1st argument is the value vector, 2nd argument is the neighbors with weights list, 3rd argument is the number of objects (here it's 5), 4th argument, s0 is the sum of the weights. Interesting that you need to tell it the number of the sum, since those are already in ww.
+length(ww$neighbours)
+
+moran(q$value, ww, n=length(ww$neighbours), S0=Szero(ww))
+
+#significance test
+moran.test(q$value, ww, randomisation=FALSE)
+
+#better to use monte carlo for significance!
+moran.mc(q$value, ww, nsim=99)
+plot(moran.mc(q$value, ww, nsim=99))
+#changed it to q so it wouldn't get confused with p used in earlier 
+```
+##b) [Question 2 in the text] How do you interpret the significance tests)?
+The MI = .1728896. We already know that because it is positive, the data is positively spatially autocorrelated. However, it is not a strong relationship, as the MI is not greater than .3. In testing for significance, the Moran's test, the p value = .0097. However, the problem with testing for spatial data significance using a regression test in that we already know that there is some spatial autocorrelation. So, this kind of test isn't really that useful: all it tells us is that our data isn't random, which we already know.  The MC test is a simulation with our data, that allows us to compare our observed MI vs all possible outcomes of the MI with our data. Because our observed MI value is an outlier as compared to the randomized data, we can concluse that our finding is statistically signifiant.
+
+
+##c) [var Question 4 in text] Use the geary, gear.test, and geary.mc functions to compute Geary’s C, and conduct significance tests.
+```{r}
+geary(q$value, ww, n=length(ww$neighbours), n1= length(ww$neighbours)-1, S0=Szero(ww))
+#geary's c= 0.5357143, k = 1.432464
+# 0<c<=1 means positively autocorrelated
+
+geary.test(q$value, ww, randomisation = TRUE, alternative = "greater")
+#gives p value, sd, and variance, in addition to the c. similar info to moran.test
+#Geary C statistic standard deviate =
+#2.42, p-value = 0.007761
+#alternative hypothesis: Expectation greater than statistic
+#sample estimates:
+#Geary C statistic       Expectation 
+ #      0.53571429        1.00000000 
+  #       Variance 
+   #    0.03680884
+
+geary.test(q$value, ww, randomisation = TRUE, alternative = "less")
+#p-value = 0.9922
+#greater or less return the same info except for the p value. 
+
+#two ways of doing simulations to test significance of geary's c:
+#bootstrap simulation of geary's c
+geary.mc(q$value, ww, nsim=99, alternative = "greater", return_boot = TRUE)
+
+#monte carlo simulation of geary's c
+geary.mc(q$value, ww, nsim=99, alternative = "greater", return_boot = FALSE)
+plot(geary.mc(q$value, ww, nsim=99, alternative = "greater", return_boot = FALSE))
+
+```
+
+
+
+Upload to smartsite an Rmarkdown and HTML file. 
+
+Due: Monday, May 8, 9a
+
+
+
