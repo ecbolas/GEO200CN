@@ -1,0 +1,275 @@
+---
+title: "Bolas_Lab9"
+author: "Ellie Bolas, GEO200CN, Spring 2017"
+date: "May 8, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#GeoDa
+###Question 1: what is the Global Moran’s I and what does it suggest about the variable? 
+-For the 1st contignecy Queen's case adjacency, MI = 0.47
+-For the 2nd contigency Queen's case adjacency, MI = .21
+-For the distance matrix, MI = .28
+All 3 MI's calculations suggest positive autocorrelation because they are positive. Only the Queen's case adjacency selecting the closest polygons has a MI over 0.3, suggesting it is highly autocorrelated. Over-all, all three options suggest that malnurishment in children is spatially autocorrelated, meaning that malnurishment is found in states that are near to each other. 
+
+###Question 2: for each weight matrix, how many districts have Moran’s I values that are signiﬁcant at p=0.001, and how many districts are in high-high (hot-spot) clusters and low-low (clod-spot) clusters. 
+-For the 1st contignecy Queen's case adjacency, there are 6 districts with p = 0.001, 16 that are high-high, and 8 that are low-low.
+-For the 2nd contigency Queen's case adjacency, ther are 6 districts with p = 0.001, 16 that are high-high and 10 that are low-low.
+For these two, only one of the districts is highlighted by both as being p = 0.001. The high-high districts are almost identical, and there is some overlap in the low-low.
+-For the distance matrix, there are 6 districts that are p = 0.001, two of which are in common with the 1st queen's contigency. There are only 11 high-high districts, but there are 13 low-low districts. The high-high are in the same general area (the northwest), as the high-high districts found for the other two matrices.
+
+#More Spatial Autocorrelation
+```{r}
+library(raster)
+library(rgdal)
+```
+
+```{r}
+datapath <- "C:/Users/ebola/Google Drive/Git/GEO200CN/data/nepal aid/nepal aid"
+
+npl <- readOGR(dsn = datapath, layer = "Nepal")
+plot(npl)
+npl
+proj4string(npl)
+crs(npl)
+```
+
+###1) create a histogram of the values for MALKIDS [hint: hist()] 
+```{r}
+npldf <- as.data.frame(npl)#didn't need to do this, npl is already a df, but it makes it easier to look at
+malkidshg<- hist(x= npl$MALKIDS)
+```
+
+###2) Map values
+```{r}
+#install.packages("tmap")
+library(tmap)
+#vignette(package = "tmap")
+#tmap is thematic maps with a package and syntax similar to ggplot2. It has two modes, "plot", and "interactive". 
+#vignette("tmap-nutshell") 
+#qtm is quick thematic map and uses the "plot" mode. same as useing "plot" in ggplot2. only requird is the shape object.
+qtm (shp=npl, fill ="MALKIDS", Fill.palette = "Blues") #map just the MALKIDS 
+qtm (shp=npl, fill = c("MALKIDS", "POPULATION"), Fill.palette="blues") #map both
+#didn't seem to notice fill.palette for colors
+
+#tmap_mode sets a global option for either plot or interactive. 
+tmap_mode("view")
+#switched the view, now the maps are interactive and it's really cool!
+qtm (shp=npl, fill ="MALKIDS", Fill.palette = "Blues") 
+qtm (shp=npl, fill = c("MALKIDS", "POPULATION"), Fill.palette="blues")
+```
+
+
+###Scatter Plots
+```{r}
+library (ggplot2) 
+library(labeling) 
+#scatter plot of malkids by populatin, with dot size and color reflecting % malkids. negative sign in front of malkids makes darker colors higher numbers.
+#npl@data designates the data to be used
+ggplot (npl@data, aes(POPULATION, MALKIDS)) + geom_point(aes(col= -MALKIDS, size=MALKIDS)) 
+```
+
+##1) Weight Matrices
+###a)Create a 1st order queen contiguity 
+```{r}
+library(spdep)
+class(npl) #spatial polygons df, sp
+#poly2nb builds a neighbors list from polygons with contiguous boundaries. First argument is the polygons, second are the row names that are the region id, for queen, if true than a single shared point meets the conditions (queen's case). If false, then more than one point required (although this doesn't make a line.)
+
+names(npldf)
+nplq <- poly2nb(npl, row.names=npl$ID, queen=TRUE)
+nplq #1st order queens contigency
+class(nplq) #nb
+#head(nplq) don't need this in the html
+
+#matrix of 1st order queen's nearest neighbors
+nplqm <- nb2mat(nplq, style='B', zero.policy = TRUE) 
+ 
+head(nplqm) 
+
+
+
+
+```
+
+### Moran's I of 1st order Queen's
+```{r}
+
+#moran's function: 1st argument is the value vector; 2nd argument is the neighbors with weights list; 3rd argument is the number of objects, length of neighbors in the weights list; 4th argument, s0 is the sum of the weights. Interesting that you need to tell it the number of the sum, since those are already in wl.
+
+nplwl <-  nb2listw(nplq, style='C')#gives weights to a list of neighbors
+nplwl
+class(nplwl) #nb, neighbors list. Can't put a matrix into the moran's i test, have to put the list in.
+
+moran(npl$MALKIDS, nplwl, n=length(nplwl$neighbours), S0 = Szero(nplwl))
+
+#I = 0.4798273
+
+```
+
+###b)2nd order queen contiguity 
+```{r}
+# From http://rspatial.org/analysis/rst/2-scale_distance.html#spatial-influence-for-polygons =
+npl2q <- nplq
+
+for (i in 1:length(nplq)) {
+    lag1 <- nplq[[i]]
+    lag2 <- nplq[lag1]
+    lag2 <- sort(unique(unlist(lag2)))
+    lag2 <- lag2[!(lag2 %in% c(nplq[[i]], i))]
+    npl2q[[i]] <- lag2
+}
+
+npl2q #2nd order queen's contigency
+
+#2nd order queen's matrix of nearest neighbors
+npl2qm <- nb2mat(npl2q, style = "B", zero.policy = TRUE) 
+dim(npl2qm)
+```
+###2nd order Queen's Moran's I
+```{r}
+class(npl2q)
+npl2qwl <-  nb2listw(npl2q, style='C')#turns nb into a list of neighbors with weights
+npl2qwl
+
+moran(npl$MALKIDS, npl2qwl, n=length(npl2qwl$neighbours), S0 = Szero(npl2qwl))
+
+#I = 0.2258045
+
+```
+
+###c) distance based (0, 0.7) weight matrices 
+```{r}
+#dnearneigh, nearest neighbors by distance. 1st argument is matrix of points or spatialpoints object; 2nd arg, d1= lower distance; 3rd arg, d2 = upper distance; row.names= region ids; longlat, if true, measure in km, if false, take values from the object
+xy <- coordinates(npl)
+#xy don't need in html
+npldis <- dnearneigh(xy, 0, 0.7)
+class(npldis) #returns nb
+npldis
+
+#turn neighbors list into spatial weights matrix:
+npldism <- nb2mat(npldis, style='B', zero.policy = TRUE)
+#head(npldism) #good, so hear, we have a matrix where things have been selected properly
+```
+###Distance Matrix Moran's I
+```{r}
+npldisl <-  nb2listw(npldis, style='C')#turns nb into a list of neighbors with weights
+npldisl #this is right, too
+
+moran(npl$MALKIDS, npldisl, n=length(npldisl$neighbors), S0 = Szero(npldisl))
+
+#I= 0 why is this zero? that doesn't make sense
+
+```
+
+##2) calculate the global Moran’s I with each weight matrix. Are the values the same as those you got in GeoDa, what might drive variation? 
+
+GeoDa Moran's I with MalKids as the variable
+- 1st contignecy Queen's case adjacency, MI = 0.472439
+- 2nd contigency Queen's case adjacency, MI = .212521
+- distance matrix, MI = .28
+
+R = 
+- 1st Queen's case, MI = #I = 0.4798273
+- 2nd Queen's case, MI = I = 0.2258045
+- distance matrix = 0
+
+The slight differences in the MI for the 1st and 2nd queen's cases, may be due to slight differences in the ways that GeoDa and R compute Moran's I. GeoDa "spatially lags" the y variable (in R this is the value/list that is the first argument of the moran function.) In GeoDa, the y variable for each neighbor location is "multiplied by the spatial weight and then the products are summed" (GeoDa glossary.) In R, the variance (each location minus the y average) is what gets multipled by the spatial weights and then summed.
+
+As for the distance matrix, I'm not sure what I did wrong that led to the variation.
+
+
+#Local Indicators of Spatial Association Statistics (LISA)
+##Local Moran's I
+-Indicates data homogeneity and diversity by looking at concentrations of high or low values of attributes. A scatter plot helps interpret. Gives a z score as a signifiance value when compared to theoretical data. 
+
+###Local Moran's I 1st Queen's
+```{r}
+#make local morans
+LoM <- localmoran(npl$MALKIDS, nplwl, zero.policy=NULL) 
+
+#local moran's as df
+LoMdf <- data.frame (LoM)
+
+#lag values, don't really understand what these are
+lag = lag.listw(nplwl, npl$MALKIDS)
+
+dat = data.frame(ID = npl$ID, mal = npl$MALKIDS, lag = lag, pval = LoMdf$Pr.z...0) 
+dat$sig =ifelse (dat$pval < 0.05 ,1, 0 ) #set signifcance at p=0.05 
+#dat #df of region  ID, malkids, lag valus, pvalues, and whether it's significant or not
+
+mv = mean(dat$mal) #create a mean for the value 
+mh = mean (dat$lag) #create a mean for the lagged value 
+
+ggplot(dat, aes(x = mal, y = lag, col=-sig)) + geom_point() + geom_smooth(method = "lm", col="grey") + geom_vline(xintercept=mv, linetype = "dashed", col="grey") + geom_hline(yintercept = mh, linetype="dashed", col="grey")
+
+```
+
+###Try to unpick this rather long line, and see if you understand the different layers that are making up this plot. Looking at this plot what can you say about the pattern of Local Moran’s I? 
+
+For 1st Queen's, of the statistically significant points, there is a cluster in the low-lows and a cluster in the high-highs, but the other two quadrants have fewer points and they are more spread out. This map makes more sense when looking at the GeoDa LISA cluster map, which echos this idea.
+
+##For the Gi and Gi* go read and follow along with the with the Rspatial chapter on local Statistics to create local statistics for the Nepal dataset[http://rspatial.org/rosu/rst/Chapter8.html], stop with the Local Moran’s I
+
+###Getis Gi 1st Queen's
+Gi= values of neighborhood/value of study area. Or, the proportoion of of the sum of all x values in the stuy accounted for by only neighbors of i. Or, Gi is the proportion of the study area accouted for by the neighborhood of i (OSU) 
+
+A location with a [high values] with have a high Gi. A location with a [low values] will have a low Gi
+```{r}
+Gi <- localG(npl$MALKIDS, nplwl)
+head(Gi)
+
+#Plot the Gi for malkids
+par(mai=c(0,0,0,0))
+Gcuts <- cut(Gi, 5)
+Gcutsi <- as.integer(Gcuts)
+cols <- rev(gray(seq(0,1,.2)))
+plot(npl, col=cols[Gcutsi])
+legend('bottomleft', levels(Gcuts), fill=cols)
+
+```
+
+###Gi* 1st Queen's
+Similar to Gi, includes area of interest with he neighbors. (includes each polygon as its own neighbor)
+```{r}
+#make each polygon its own neighbor
+
+ws <- include.self(nplq)
+
+#now do Gi*
+lstws <- nb2listw(ws, style='B')
+Gis <- localG(npl$MALKIDS, lstws)
+#Gis
+
+#plot the Gi*
+Gscuts <- cut(Gis, 5)
+Gscutsi <- as.integer(Gscuts)
+cols <- rev(gray(seq(0,1,.2)))
+plot(npl, col=cols[Gscutsi])
+legend('bottomleft', levels(Gscuts), fill=cols)
+
+```
+
+###Local Average 1st Queen's
+```{r}
+m <- sapply(ws, function(i) mean(npl$MALKIDS[i]))
+#m
+class(m)
+cts <- cut(m, 5) #converting number to factor 
+mcts <- as.integer(cts) #converting factor to integer, now the values are in zones
+
+
+#plot the local average
+plot(npl, col=cols[mcts])
+legend('bottomleft', levels(cts), fill=cols)
+```
+
+
+###Again, where the values different from those you got with GeoDa, and what might drive variation?
+
+The GeoDa Maps only plot regios where p < 0.05, while R plots all the regions. That is to say, R tells you the significance and Gi score for each region, but unless a region is significant, GeoDa doesn't plot it. 
+

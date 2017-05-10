@@ -138,11 +138,14 @@ Determining which polygons are "near" and how to quantify that
 q <- p[p$NAME_1=="Diekirch", ] #only taking the rows with "Dierkirch" in the Name_1 column
 q$value <- c(10, 6, 4, 11, 6) #added a list of values to those elements
 data.frame(q)
-w <- poly2nb(q, row.names=q$ID)
-class(w)
+q #df of just Diekirch info
+class(q) #spatial polygons df, sp
+w <- poly2nb(q, row.names=q$ID) #making neighbors list from polygons list, can use spatial polygons df as "list" here
+class(w) #nb
 w
 summary(w)
 str(w)
+head(w)
 plot(q, col='gray', border='blue', lwd=2)
 xy <- coordinates(q)
 plot(w, xy, col='red', lwd=2, add=TRUE)
@@ -199,6 +202,7 @@ MI #the value you get in the absence of spatial correlation, if the data is rand
 ##a) plot the density curve for the Moran’s i p-value Monte Carlo calculation. 
 ```{r}
 #moran's function
+#w is the neighbors list based on the "values" column that was added to a subset of the data
 ww <-  nb2listw(w, style='B')#gives weights to a list of neighbors
 ww
 #moran's function: 1st argument is the value vector, 2nd argument is the neighbors with weights list, 3rd argument is the number of objects (here it's 5), 4th argument, s0 is the sum of the weights. Interesting that you need to tell it the number of the sum, since those are already in ww.
