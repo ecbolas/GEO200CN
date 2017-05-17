@@ -76,7 +76,8 @@ library(maptools)
 datapath <- 'C:/Users/ebola/Google Drive/Git/GEO200CN/data/'
 city <- readRDS(file.path(datapath, "city.rds"))
 crime <- readRDS(file.path(datapath, "crime.rds"))
-crime
+crime #spatial points df
+city #spatial polygons df
 
 #map
 plot(city, col='light blue')

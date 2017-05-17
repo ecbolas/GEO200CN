@@ -27,10 +27,10 @@ output: html_document
   
 ```{r}
 ##Example 1
-x <- list(a=1:10, b=rnorm(10, 20, 5), 
+xq <- list(a=1:10, b=rnorm(10, 20, 5), 
               c=sample(c(TRUE, FALSE, NA), 10, replace=TRUE))
 
-lapply(x, mean, na.rm=TRUE)
+lapply(xq, mean, na.rm=TRUE)
 
 ##Example 2
 #lapply(1:10, function(i) runif(20, min=0, max=i))

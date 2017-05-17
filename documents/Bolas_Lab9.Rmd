@@ -273,3 +273,4 @@ legend('bottomleft', levels(cts), fill=cols)
 
 The GeoDa Maps only plot regios where p < 0.05, while R plots all the regions. That is to say, R tells you the significance and Gi score for each region, but unless a region is significant, GeoDa doesn't plot it. 
 
+
