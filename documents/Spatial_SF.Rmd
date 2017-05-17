@@ -1,0 +1,199 @@
+---
+title: "Spatial_SF"
+author: "Ellie"
+date: "May 16, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Ryan's Lesson on SF
+###Data From here: https://github.com/ryanpeek/test_projects/tree/master/docs
+In the old days, used raster package and shp@data$variable
+SF reads in stuff as dataframes
+Works with any shapefiles, comes with shapefiles to play with
+May not be able to extract form a map, need the shapefile or raster
+
+SF- Simple Features, it is the basis of the opensource GIS formats
+-reads all the polygons, etc., reads CRS really easily and tells you that data right away
+-when you read something in:
+  -simple feature = data.frame
+  -sfg= it reads it in as a list-column, it knows where things are in space
+  -tells you the object
+  -also reads in the first 3 features with their spatial information. can work with data really quickly easily in dplyr
+  -speeds up plotting, feeds into ggplot2 easily
+
+## Spatial Mapping in R
+
+Newer packages available (namely the `sf` package) make things much simpler and more streamlined for reading/writing and working with spatial data. A few nice writeups are [here](https://geographicdatascience.com/2017/01/06/first-impressions-from-sf-the-simple-features-r-package/) and [here](http://walkerke.github.io/2016/12/spatial-pipelines/), or [here](http://strimas.com/r/tidy-sf/). A handy CRS/spatial reference in R is [here](https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/OverviewCoordinateReferenceSystems.pdf)
+
+```{r packages}
+#devtools::install_github("tidyverse/ggplot2")
+library(ggplot2) # for dev version
+library(dplyr)
+library(sf) # rgdal/rgeos/sp replacement
+library(tidyverse) # wickedverse
+library(viridis) #colors
+library(rvest) # scraping data
+library(leaflet)
+library(rgdal)
+#EPSG <- make_EPSG()
+#EPSG[grep("aea", EPSG$note, ignore.case=TRUE), 1:2]
+```
+
+### Reading in Shapes
+
+Turns out the `sf` package is much faster and more streamlined at reading in large spatial data. This is a set of **22,676** polygons with 20 fields total (about a 530MB shapefile). It takes just over 4 seconds with `sf`.
+
+Ryan tested the timing to read in lots of polygons with SF vs rgdal, SF reads in faster and smaller
+```{r readingshps_sf, eval=F}
+#system.time(h12_sf <- st_read("~/Dropbox/R/PROJECTS/GIS_workshop_2017/data/Western_HUC12_update_cws.shp", stringsAsFactors = F))
+
+#object.size(h12_sf)
+#glimpse(h12_sf) # see dataframe with list-col geometry col
+#as.tibble(h12_sf) # plays well with others
+```
+
+The same operation using traditional `sp::readOGR` takes a little over 16 seconds, and is a larger object in R.
+
+```{r readingshps_sp, eval=F}
+#library(rgdal)
+#dsn <- path.expand("~/Dropbox/R/PROJECTS/GIS_workshop_2017/data")
+#system.time(h12_sp <- readOGR(dsn = dsn, layer = "Western_HUC12_update_cws"))
+
+#object.size(h12_sp)
+#str(h12_sp) # lawd have mercy its S4
+```
+
+So for a half GB file that saves an immense amount of time, and it's a much cleaner way to work with the data.
+
+Also, a lot to sort through to get to the variable that you want
+
+#### Looking at Bit Deeper at `sf` objects
+
+It's possible to pull out just the list-column geometries to play with if that's something you need to do.
+
+```{r diving into sf}
+
+h12_geom <- st_read("../data/shps/HUC8_named.shp") #read in data
+(h12_geom <- st_geometry(h12_geom)) #see the geometries of this file, it just pulls out the list-column with just the polygons
+attributes(h12_geom)
+h12_geom[[1]] %>% class #sfg means list-column format
+
+```
+
+### Piping to `ggplot2`
+
+Currently need the development version of ggplot2 for this, but it's awesome.
+
+```{r ggplot}
+
+#devtools::install_github("tidyverse/ggplot2", force=TRUE) 
+library(ggplot2)
+
+rivs_sf <- st_read("../data/shps/major_rivers_dissolved.shp", stringsAsFactors = F, quiet = TRUE) %>% st_transform(3310) #this is major rivers in CA, it reads stringsAsFactors as default, quiet=true so it spits out less at the beginning, it already has a projection so st_transform added in, 3310 is the transformation he wants to use, make sure everything has the same transformation
+
+st_crs(rivs_sf) # check crs
+# $epsg 3310
+
+# "+proj=aea +lat_1=34 +lat_2=40.5 +lat_0=0 +lon_0=-120 +x_0=0 +y_0=-4000000 +datum=NAD83 +units=m +no_defs"
+
+#do the same thing for lakes
+lakes_sf <- st_read("../data/shps/CA_major_lakes_res.shp", stringsAsFactors = T) %>% st_set_crs(3310) #st_set_crs: this didn't have a projection yet, so we set it
+st_crs(lakes_sf)
+
+h8 <- st_read("../data/shps/HUC8_named.shp", stringsAsFactors = T) %>% st_transform(3310)
+st_crs(h8)
+# read from sqlite (but can't plot in ggplot) getting
+  # Error in if (st_is_longlat(crs)) bb = trim_bb(bb, margin):
+  #  missing value where TRUE/FALSE needed
+
+#h8 <- st_read(dsn = "~/Dropbox/gis/pisces.sqlite", "HUC8FullState", stringsAsFactors= T) %>% st_transform(3310)
+
+# make a plot!
+#use ggplot and geom_sf
+ggplot() +
+  geom_sf(data = lakes_sf, aes(fill = FEATURE), show.legend = T) +   scale_fill_viridis("Feature Type", discrete = T) +
+  geom_sf(data=rivs_sf, color="blue") +
+  ggtitle("Lakes & Rivers CA") +
+  theme_bw()
+
+# this is crashing computer 
+ggplot() +
+  #geom_sf(data = lakes_sf, color="skyblue") +
+  #geom_sf(data=rivs_sf, color="blue") +
+  geom_sf(data=h8, aes(fill=Shape_Area), show.legend = F,
+          color="gray") + scale_fill_viridis("Area") +
+  #scale_fill_viridis("Feature Type", discrete = T) +
+  ggtitle("Lakes & Rivers CA") +
+  theme_bw()
+
+
+
+```
+
+
+### Piping to Leaflet
+
+You can also make nice leaflet maps using this package without too much hassle. 
+
+```{r makeleaflet}
+library(leaflet)
+
+rivers <- st_read("../data/shps/CA_major_rivers_CV_SNMdc.shp", stringsAsFactors = F) 
+rivers <- st_transform(rivers, crs = 4326) # transform to WGS84, that's what leaflet needs to use
+head(rivers)
+st_proj_info("datum") # look at list of datums
+
+rivers <- rivers %>% 
+  as("Spatial") #have to tell it you want it as spatial because leaflet doesnt understand what a list-column is
+
+rivers %>%
+  leaflet() %>%
+  addTiles() %>% 
+  addPolygons(weight = 1)
+
+```
+
+### Databases with `sf`
+
+This is one of the more exciting bits, you can read/write/operate directly with spatial databases.
+
+```{r read a db}
+fname <- file.path("~/Dropbox/gis/pisces.sqlite")
+fname
+
+# read layers in db:
+st_layers(fname) #path to the database, this tells you whats in there
+rivs <- st_read(fname, "major_rivers") #just choose the layer within the database you want to read in. This is awesome, so you don't have to use the whole thing!
+rivs <- st_transform(rivs, crs = 4326) # transform to WGS84
+head(rivs)
+
+rivs <- rivs %>% 
+  as("Spatial")
+
+# write to a shapefile:
+
+# st_write(rivs, "../data/shps/major_rivers_pisces.shp")
+
+# Make a Leaflet Map
+
+leaflet() %>%
+  addTiles() %>% 
+  addProviderTiles("Esri.WorldImagery", group = "ESRI Aerial") %>%
+  addProviderTiles("Esri.WorldTopoMap", group = "Topo") %>%
+  
+  addPolylines(data=rivs, group="piscesRivs", weight=1) %>% 
+  
+  addPolylines(group = "BigRivs", stroke = 0.8,
+               data = rivers, weight=1, color="maroon") %>% 
+  
+  addLayersControl(
+    baseGroups = c("ESRI Aerial", "Topo"),
+    overlayGroups = c("piscesRivs",
+                      "BigRivs"),
+    options = layersControlOptions(collapsed = T))
+```
+Also can do st_write it can write data out as whatever shapefile you want, works with kml, etc., too. Also netCDF, big files with lots of layers/variables for climate data

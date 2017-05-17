@@ -1,0 +1,27 @@
+---
+title: "Geo200CN Challenges"
+author: "Ellie"
+date: "May 15, 2017"
+output: html_document
+---
+
+#Cross Validation
+-If you use a model, you need to use cross validation.
+
+###K-Fold Cross Validation
+- Graphs can have RMSE values of 0, but can overfit the line (bunch of squiggles put on a line)
+- Can underfit models, too (use a straight line when you should use a curved line)
+
+####Cross Validation Steps
+1. Assign each data point into 1 of K groups, k=5 is most common. You can also do n-fold (leave one out), where you leave one point out every time, but this result isn't as robust
+2. Of the groups, split one group out as the test data, use the other groups as the training data.
+3. Fit the model using the training data.
+4. Use the model that you fit to predicted/training data for test data
+  -interpolate or predict in r
+5. Evaluate how well you were able to predict your test data useing a measurement of model error like RMSE
+  -to do RMSE, yi is each value of the test data, and ybar is the average as predicted by the training data for that round of k. n is the total number of test values. 
+6. Repeat for each of k groups
+7. Average all the RMSE values. This is the error value to be assigned to the model
+Cross validation gives the error measures. But when you actually do the inference with the model, use all your data. 
+
+

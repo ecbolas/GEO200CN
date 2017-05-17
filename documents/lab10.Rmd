@@ -1,0 +1,17 @@
+---
+title: "Lab10"
+author: GEO200CN, spring 2017
+output: html_document
+---
+
+# Lab 10: Interpolation
+In this lab you will work with two California datasets, one measuring precipitation across the state, and a second measuring air quality, including ozone rates. This lab provides an opportunity to practice and compare various interpolation methods, and continue to strengthen your familiarity with R. 
+
+Read and follow along with the Interpolations chapter at RSpatial respond to the 10 in-text questions, and complete the optional bonus assignment on the lab sheet. [http://rspatial.org/analysis/rst/4-interpolation.html]
+
+Upload to smartsite an Rmarkdown and HTML file. 
+
+Due: Wednesday, May 17, 9a
+
+
+

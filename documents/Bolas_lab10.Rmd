@@ -1,0 +1,829 @@
+---
+title: "Bolas_Lab10 Interpolation"
+author: Ellie Bolas, GEO200CN, spring 2017
+output: html_document
+---
+
+# Lab 10: Interpolation
+In this lab you will work with two California datasets, one measuring precipitation across the state, and a second measuring air quality, including ozone rates. This lab provides an opportunity to practice and compare various interpolation methods, and continue to strengthen your familiarity with R. 
+
+Read and follow along with the Interpolations chapter at RSpatial respond to the 10 in-text questions, and complete the optional bonus assignment on the lab sheet. [http://rspatial.org/analysis/rst/4-interpolation.html]
+
+Upload to smartsite an Rmarkdown and HTML file. 
+
+Due: Wednesday, May 17, 9a
+
+#Interpolation
+Spatial autocorrelation in spatial data is helpful if we want to predict values at locations where no measurements have been made. We are relying on Tobler's 1st law here, that near things are more related than distance things. 
+
+###Exact Interpolation
+In exact interpolation, the height of the surface (field), z,  is described based on known points, such that the surface is true at each of these control points. 3 major techniques are used to automate interpolation:
+-proximity polygons
+-local spatial average
+-inverse distance weighted spatial average
+
+The problem with these interpolations is that the don't recognize variability over space and time or error. Also, they don't take into account spatial behavior. 
+
+###Statistical Interpolations:
+Trend surface analysis generalizes the field into a major feature or trend. This is an extension of multiple linear regression and uses the ordinary least squaures regression to approximate a trend in z. 
+
+Kriging uses the distance weighting technique by using control points to find optimum values for the weights of the data values. Based on the spatial variation shown in semivariogram (squared height difference x distance between spot heights), a function is selected to fit/model the data. The the model is used to determine weights.
+
+
+###read in data
+```{r}
+datapath <-"C:/Users/ebola/Google Drive/Git/GEO200CN/data"
+
+d <- read.csv(file.path(datapath, "precipitation.csv"))
+#head(d)
+```
+
+###Annual Precipitation in CA- graph, map, and transformed coordinates
+```{r}
+d$prec <- rowSums(d[, c(6:17)]) #make a total precip column for every row
+
+##graph by ascending precip
+plot(sort(d$prec), ylab='Annual precipitation (mm)', las=1, xlab='Stations') 
+
+
+##map of precip, will use spspoly which is a way of plotting spatial data
+library(sp)
+
+#make spatialpoints of lon and lat, add NAD83 projection
+dsp <- SpatialPoints(d[,4:3], proj4string=CRS("+proj=longlat +datum=NAD83"))
+
+#make spatial points df with lon lat and d data
+dsp <- SpatialPointsDataFrame(dsp, d)
+#head(dsp)
+CA <- readRDS(file.path(datapath, "counties.rds"))
+
+# define groups for mapping
+cuts <- c(0,200,300,500,1000,3000)
+
+# set up a palette of interpolated colors, one color for each zone
+blues <- colorRampPalette(c('yellow', 'orange', 'blue', 'dark blue'))
+
+#set up the polygons to be mapped using spplot
+pols <- list("sp.polygons", CA, fill = "lightgray")
+
+spplot(dsp, 'prec', cuts=cuts, col.regions=blues(5), sp.layout=pols, pch=20, cex=2)
+
+##Transform coordinates using the commonly used coordinate reference system for California (“Teale Albers”)
+
+#assign a projection to a variable
+TA <- CRS("+proj=aea +lat_1=34 +lat_2=40.5 +lat_0=0 +lon_0=-120 +x_0=0 +y_0=-4000000 +datum=NAD83 +units=m +ellps=GRS80 +towgs84=0,0,0")
+
+library(rgdal)
+#transform the points
+dta <- spTransform(dsp, TA)
+cata <- spTransform(CA, TA)
+#head(dta)
+```
+
+
+#Exact Interpolation
+##Null Model
+To interpolate precip for unsampled locations, make a null-model using a mean of all observations. Use the Root Mean Square Error statistic. RMSE = differences between observed and predicted values. Looking at the error at each point. 
+
+```{r}
+#for each data point, observed-predicted = residual error, square it to make the data positive, take the mean of all of them the the square root to smooth it, pull in outliers. RMSE is a way of comparing real data against a null model
+
+RMSE <- function(observed, predicted) {
+  sqrt(mean((predicted - observed)^2, na.rm=TRUE))
+}
+
+#observed= dsp$precip, expected is the means of dsp$precip
+null <- RMSE(dsp$prec, mean(dsp$prec))
+
+
+null #435.3217
+```
+
+##Proximity Polygons/Nearest Neighbor Interpolation
+Used to interpolate categorial variables. Every unsampled point gets the value of its nearest control point. Assumes each polygon has a uniform height equal to the height at the control point.
+```{r}
+library(dismo)
+
+#Voronoi create voronoi or thiessen or nearest neighbor polygons. 
+#dta is dsp, our spatialpoints df with all our info, but the coorindates were transformed
+v <- voronoi(dta)
+plot(v)
+
+#confine this to CA
+#cata is CA counties with coordinates transformed
+ca <- aggregate(cata) #cata is california counties
+class(ca) #spatial polygons
+class(v) #spatial polygons df
+
+vca <- intersect(v, ca) #makes new spatialpolygons combining the voroni polygons of dta with the polgons of the counties
+class(vca) #spatial polygons df
+
+#plot polygons by precip
+spplot(vca, 'prec', col.regions=rev(get_col_regions()))
+
+#rasterize this
+r <- raster(cata, res=10000)
+
+#to rasterize, 1st argument is the spatial polygons object, 2nd argument is the raster object, "precip" is field, the values to be transfered. in other words, the column name of the variable we want to transfer
+vr <- rasterize(vca, r, 'prec') #raster of voroni polygons of precip data fitted to CA counties 
+plot(vr)
+
+```
+
+###5-fold Cross Validation
+training data vs. test data. Checking the proximity polygons for significance. 
+
+####Question 1: Describe what each step in the code chunk above does
+Answered inline with code
+```{r}
+set.seed(5132015) #random number generator. this means that the way the k groups will be randomly assigned will happen the same way each time. For each bin of the kfold, it makes sure that dta is randomly placed in that bin in the same way, each time. 
+
+#kfold partitioning is for testing of models. Each record in the matrix is randomly assigned a group between 1-k. k will be defined in the for loop.  for each round of k, a certain amount of data will be the training data, and then some test data will be compared against it. 
+
+#here, use the number of rows in dta, the dsp transformed.
+#dta is a dataframe with long/lat monthly precip and average precip for places around CA
+kf <- kfold(nrow(dta))
+
+rmse <- rep(NA, 5)
+#NA is a placeholder for the thing that is going to be done 5 times, for loop defines the NA. We are going to be doing the rmse 5 times, once for each loop of the k. define this here to make sure the for loop spits out this data
+
+for (k in 1:5) { #ok here k is defined as 1:5 so, each row of dta will be randomly assigned to to one of those
+  test <- dta[kf == k, ] 
+  train <- dta[kf != k, ] 
+  #for each round, take kf, some of dta and make it the test data. the data from dta that was not turned into test is the training data, that we will practice the model on. 
+  v <- voronoi(train) #make voronis of the training data. this is the practice of the model
+  p <- extract(v, test) #even though extract's 1st argument is supposed to be raster, it can work with polygons. test data is the real data. for each test point, see how well train data and test data match up
+  rmse[k] <- RMSE(test$prec, p$prec) #now just calculating rmse for what the model found for  training for each round of k against that rounds values of k
+}
+
+class(v)
+
+rmse #gives us 5 RMSE for the 5 tests. thing of these as 5 null values
+## [1] 199.0686 187.8069 166.9153 191.0938 238.9696
+
+mean(rmse) #the average RMSE from the 5 tests. this gives the overall RMSE for the model, tells us how good the model (voroni triangles) is
+## [1] 196.7708
+
+
+#comparing voronis with null model
+1 - (mean(rmse) / null) 
+## [1] 0.5479875
+```
+
+####Question 2: How does the proximity-polygon approach compare to the NULL model?
+In proximity-polygons, the precipiation of a polygon is the precipitation of theh control point that defines that polygon. Each raster/polygon is a collection of nearest neighbor points that all now have the same z value.  In contrast, the null model doesn't account for spatial variation, it just takes the average of all precipitation values for all of California. The null RMSE = 435.3217, while the Voroni model RMSE = 196.7708. So, in comparison, the proximity-polygons have a much smaller RMSE and are a better predictor of precipiation. They are a local statistic for counties of california. 
+
+####Question 3: You would not typically use proximty polygons for rainfall data. For what kind of data would you use them?
+
+Proximity polygons can be used to understand distance between events and the spacing of those events. Also, the size of the polygons demonstrate how tightly packed nearest neighbors are. (Smaller polygons have more tightly packed nearest neighbors.) Rainfall is best measured across a gradient, so using geographic weighted regression is better because it uses local models, but weights the values depending on how far away they are. However, for proximity polygons, the entire polygon is given the same value. In this way, polygons work better with discrete data, data that looks at whether a variable is present or not. For example, data of locations of post offices or schools that show the nearest of these buildings for a given polygon.
+
+#Local Spatial Average/Nearest Neighbor Interpolation
+Calculate local spatial means based on either a set distance or k-nearest neighbors. If using distance, this is not continuous because some data doesn' get included in the "nearest." Nearest neighbors helps fix this, because the search radius can change in size. 
+distance matrix and 5 nearest neighbors
+```{r}
+##distance matrix
+#vr is the raster polygons of avg. precip/year for each county in CA, includes long and lat from original df. using control points means using few points to construct a continuous field of data. 
+cp <- rasterToPoints(vr) #control points are the the long and lat of the original df.
+
+# distance matrix between precip rasters and dta (this is confusing to me, because I thought they both had the same coordinates)
+e <- pointDistance(cp[, 1:2], dta, lonlat=FALSE) #lonlat=false means euclidian distance used, in m
+nrow(dta)
+## [1] 456
+nrow(cp)
+## [1] 4087
+# not symmetric!
+dim(e)
+## [1] 4087  456
+e[1:5,1:5]
+
+##5 nearest neighbors
+nn <- 5
+# t(x) means transpose what's inside here, reverse rows and columns, 
+#over df e, apply function x for 1-5 (Why did nn as 5 need to be defined seperately????)
+ngb <- t(apply(e, 1, function(x) order(x)[1:nn]))
+#5 nearest neighbors for each county
+
+```
+
+Plotting and Mapping 5 nearest neighbors
+```{r}
+##plot it
+plot(cata) #plots the counties
+points(cp[1, 1:2, drop=FALSE], col='blue', pch='x', cex=2) #adds an "x" to athe first county in the list
+points(dta[ngb[1,], ], col='red', pch=20) #added first county's 5 nearest neighbros
+points(cp[nrow(cp), 1:2, drop=FALSE], col='blue', pch='x', cex=2) #add an x to the last row oc cp (which is what nrow calculates)
+points(dta[ngb[nrow(cp),], ], col='red', pch=20) # add the 5 nearest neighbors for the last row
+
+##make a map
+#make pairs
+pairs <- cbind(rep(1:nrow(ngb), nn), as.vector(ngb))
+
+#head(dta)
+
+#get values for pairs and compute average
+values <- dta$prec[pairs[,2]] 
+pn <- tapply(values, pairs[,1], mean)
+
+#assign to new raster
+nnr <- r
+nnr[!is.na(vr)] <- pn
+plot(nnr)
+
+```
+
+cross validate
+```{r}
+rr <- r
+rmse <- rep(NA, 5)
+for (k in 1:5) {
+  test <- dta[kf == k, ]
+  train <- dta[kf != k, ]
+  e <- pointDistance(cp[, 1:2], train, lonlat=FALSE)
+  ngb <- t(apply(e, 1, function(x) order(x)[1:nn]))
+  pairs <- cbind(rep(1:nrow(ngb), nn), as.vector(ngb))
+  values <- dta$prec[pairs[,2]]
+  pn <- tapply(values, pairs[,1], mean)
+  rr[!is.na(vr)] <- pn
+  p <- extract(rr, test)
+  rmse[k] <- RMSE(test$prec, p)
+}
+rmse
+## [1] 439.6392 456.5775 516.1709 458.4795 434.5379
+mean(rmse)
+## [1] 461.081
+1 - (mean(rmse) / null)
+## [1] -0.0591731
+```
+
+
+#Inverse Distance Weighted Spatial Average
+Height z is a distance-weighted sum of sample values in a defined neighborhood. Nearest locations given more weight in that calculation than farther away locations. The problem with this is both distance and theh weights are assigned arbitrarily.
+```{r}
+
+#install.packages("gstat")
+library(gstat)
+
+#gstat makes objects that hold info for uni or multivariate geostatistical predictions (for kriging)
+#argument 1, g= gstat object to add to or be created if missing; arg 2, id= identifier of new variable, if missing, n is used; arg 3, formula = defines the dependent variable, for ordinary or simple kriging use name ~1; arg 4, locations = spatial data locations
+gs <- gstat(formula=prec~1, locations=dta)
+
+#interpolate makes a rasterlayer with x,y as independent variables (bc z is dependent.) 1st argument, object = raster object; 2nd argument, model = model object
+#r <- raster(cata, res=10000) raster of CA counties
+#gs is gstat object of precip with lon/lat locations
+idw <- interpolate(r, gs)
+## [inverse distance weighted interpolation]
+
+idwr <- mask(idw, vr) #new raster object with the same values as idw that masks vr, the raster of voroni polygons of precip data fitted to CA counties  
+plot(idwr)
+```
+####Question 4: IDW generated rasters tend to have a noticeble artifact. What is that?
+The artifact is that the distance cut-off is arbitrarily assigned, and therefore, the weights for the values are as well. Results can vary depending on how steeply a drop-off in weights is coded for. Additionally, if the neighborhood is defined by distance, the density of points in neighborhoods can impact how much weight each point gets. There is not a way to control for this variation across neighborhoods. For a neighborhood with few points, each of these will have more weight and impact on the on the overall value than a neighborhood with many points. 
+
+####Cross Validate the IDW
+```{r}
+rmse <- rep(NA, 5)
+for (k in 1:5) {
+  test <- dta[kf == k, ]
+  train <- dta[kf != k, ]
+  gs <- gstat(formula=prec~1, locations=train)
+  p <- predict(gs, test)
+  rmse[k] <- RMSE(test$prec, p$var1.pred)
+}
+
+rmse
+## [1] 215.3319 211.9383 190.0231 211.8308 230.1893
+mean(rmse)
+## [1] 211.8627
+1 - (mean(rmse) / null)
+## [1] 0.5133192
+```
+
+####Question 5: Inspect the arguments used for and make a map of the IDW model below. What other name could you give to this method (IDW with these parameters)? Why?
+```{r}
+gs2 <- gstat(formula=prec~1, locations=dta, nmax=1, set=list(idp=1))
+
+# prec~1 is dependent variable, locations are dta, nmax = the number of nearest observations to be used, set= list of parameters for gstat, not sure what idp is
+
+idw2 <-interpolate(r, gs2)
+## [inverse distance weighted interpolation]
+
+idwr2 <- mask(idw2, vr) #new raster object with the same values as idw that masks vr, the raster of voroni polygons of precip data fitted to CA counties  
+plot(idwr2)
+```
+By setting nmax so only the single closest observation can be used, it seems similar to setting up a single nearest neighbor interpolation. 
+
+
+#Statistical Interpolation
+
+###Data Prep
+```{r}
+datapath <- "C:/Users/ebola/Google Drive/Git/GEO200CN/data"
+x <- read.csv(file.path(datapath, "airqual.csv"))
+class(x)
+x$OZDLYAV <- x$OZDLYAV * 1000 #OZDLYAV means ozone level parts per billion, multiplied by 1000 to make it easier to read 
+
+#make a spatialpointsdataframe, transform to teale albers, the california projection
+library(sp)
+
+coordinates(x) <- ~LONGITUDE + LATITUDE
+proj4string(x) <- CRS('+proj=longlat +datum=NAD83')
+TA <- CRS("+proj=aea +lat_1=34 +lat_2=40.5 +lat_0=0 +lon_0=-120 +x_0=0 +y_0=-4000000 +datum=NAD83 +units=km +ellps=GRS80")
+library(rgdal)
+aq <- spTransform(x, TA) #air quality data in the TA CRS
+#head(aq)
+#names(aq)
+
+#make template rater to interpolate- turn the spatialpolygons df of CA into a spatial grid
+cageo <- readRDS(file.path(datapath, 'counties.rds'))
+catrans <- spTransform(cageo, TA)
+rca <- raster(catrans)
+res(rca) <- 10  # sets 10 km resolution since your CRS's units are in km
+g <- as(rca, 'SpatialGrid')#CA counties as a spatial grid with the TA projection
+class(g)
+#head(g)
+```
+
+###Variogram
+```{r}
+gsozone <- gstat(formula=OZDLYAV~1, locations=aq)
+
+vozone <- variogram(gsozone, width=20)
+#head(vozone)
+##     np      dist    gamma dir.hor dir.ver   id
+## 1 1010  11.35040 34.80579       0       0 var1
+## 2 1806  30.63737 47.52591       0       0 var1
+## 3 2355  50.58656 67.26548       0       0 var1
+## 4 2619  70.10411 80.92707       0       0 var1
+## 5 2967  90.13917 88.93653       0       0 var1
+## 6 3437 110.42302 84.13589       0       0 var1
+plot(vozone)
+```
+
+###Fit variogram model
+```{r}
+##Exponential fit of to variogram
+#fit.variogram. 1st arg, object = the variogram; 2nd arg, model= output of vgm. can also include sills, range, and method, it does this automatically
+#vgm, 1st arg=psill, the patial sill; 2nd arg, model= type of model, here it's exponential; 3rd arg, range; 4th arg, kappa=smoothness parameter
+fve <- fit.variogram(vozone, vgm(85, "Exp", 75, 20))
+fve
+##   model    psill    range
+## 1   Nug 21.96600  0.00000
+## 2   Exp 85.52957 72.31404
+plot(variogramLine(fve, 400), type='l', ylim=c(0,120))
+#variogramLine needs the variogram objects and the maximum distance for semivariance values
+points(vozone[,2:3], pch=20, col='red')
+
+
+##Spherical fit to variogram
+fvs <- fit.variogram(vozone, vgm(85, "Sph", 75, 20))
+fvs
+##   model    psill    range
+## 1   Nug 25.57019   0.0000
+## 2   Sph 72.65881 135.7744
+plot(variogramLine(fvs, 400), type='l', ylim=c(0,120) ,col='blue', lwd=2)
+points(vozone[,2:3], pch=20, col='red')
+
+
+#another way to plot:
+plot(vozone, fve)
+plot(vozone, fvs)
+```
+
+###Ordinary Kriging
+```{r}
+#gstat makes objects that hold info for uni or multivariate geostatistical predictions (for kriging)
+#argument 1, g= gstat object to add to or be created if missing; arg 2, id= identifier of new variable, if missing, n is used; arg 3, formula = defines the dependent variable, for ordinary or simple kriging use name ~1; arg 4, locations = spatial data locations
+kozone <- gstat(formula=OZDLYAV~1, locations=aq, model=fve)
+
+# predicted ordinaty kriging using predict function, needs an object from gstat class
+#g= #CA counties as a spatial grid with the TA projection
+kozonep <- predict(kozone, g)
+## [using ordinary kriging]
+spplot(kozonep)
+class(kozonep)
+
+#make a raster layer of kozonep
+ok <- brick(kozonep)
+ok
+
+
+#with mask, make a raster object that has the same values as ok, by masking it, it seems to confine ok to only catrans, the counties of CA
+ok1 <- mask(ok, catrans)
+names(ok1) <- c('prediction', 'variance')
+plot(ok1)
+
+#this plots two maps. prediction is the kriging prediction, while the variance map shows us the variance in the data for each point
+
+```
+
+###Make IDW with this same data
+```{r}
+idm <- gstat(formula=OZDLYAV~1, locations=aq)
+idp <- interpolate(rca, idm)
+## [inverse distance weighted interpolation]
+idp <- mask(idp, catrans)
+plot(idp)
+class(idp)
+
+#optim function finds IDW parameters (distance decay and nearest neighbors). You provide initial values and optim finds the best ones.
+
+RMSE <- function(observed, predicted) {
+  sqrt(mean((predicted - observed)^2, na.rm=TRUE))
+}
+
+f1 <- function(x, test, train) {
+  nmx <- x[1]
+  idp <- x[2]
+  if (nmx < 1) return(Inf)
+  if (idp < .001) return(Inf)
+  m <- gstat(formula=OZDLYAV~1, locations=train, nmax=nmx, set=list(idp=idp))
+  p2 <- predict(m, newdata=test, debug.level=0)$var1.pred
+  RMSE(test$OZDLYAV, p2)
+}
+set.seed(20150518)
+i <- sample(nrow(aq), 0.2 * nrow(aq))
+tst <- aq[i,]
+trn <- aq[-i,]
+opt <- optim(c(8, .5), f1, test=tst, train=trn)
+
+opt
+## $par
+## [1] 9.1569933 0.4521968
+##
+## $value
+## [1] 7.28701
+##
+## $counts
+## function gradient
+##       41       NA
+##
+## $convergence
+## [1] 0
+##
+## $message
+## NULL
+
+#optimal IDW 
+ozone <- gstat(formula=OZDLYAV~1, locations=aq, nmax=opt$par[1], set=list(idp=opt$par[2]))
+class(ozone) #gstat, list
+
+
+idwoz <- interpolate(rca, ozone)
+## [inverse distance weighted interpolation]
+idwoz1 <- mask(idwoz, catrans)
+plot(idwoz1)
+```
+
+###thin plates model
+```{r}
+#install.packages("fields")
+library(fields)
+#Tps is thin plate spline regression, fits thin plate to irregular data works for a single dimension fo kriging
+m <- Tps(coordinates(aq), aq$OZDLYAV)
+tps <- interpolate(rca, m)
+tps1 <- mask(tps, idwoz1)
+plot(tps1)
+```
+
+###Cross Validate IDW, Ordinary Kriging, and TPS
+```{r}
+library(dismo)
+
+nfolds <- 5
+k2 <- kfold(aq, nfolds)
+
+ensrmse <- tpsrmse <- krigrmse <- idwrmse <- rep(NA, 5)
+
+for (i in 1:nfolds) {
+  test <- aq[k2!=i,]
+  train <- aq[k2==i,]
+  m <- gstat(formula=OZDLYAV~1, locations=train, nmax=opt$par[1], set=list(idp=opt$par[2]))
+  p1 <- predict(m, newdata=test, debug.level=0)$var1.pred
+  idwrmse[i] <-  RMSE(test$OZDLYAV, p1)
+
+  m <- gstat(formula=OZDLYAV~1, locations=train, model=fve)
+  p2 <- predict(m, newdata=test, debug.level=0)$var1.pred
+  krigrmse[i] <-  RMSE(test$OZDLYAV, p2)
+
+  m <- Tps(coordinates(train), train$OZDLYAV)
+  p3 <- predict(m, coordinates(test))
+  tpsrmse[i] <-  RMSE(test$OZDLYAV, p3)
+
+  w <- c(idwrmse[i], krigrmse[i], tpsrmse[i])
+  weights <- w / sum(w)
+  ensemble <- p1 * weights[1] + p2 * weights[2] + p3 * weights[3]
+  ensrmse[i] <-  RMSE(test$OZDLYAV, ensemble)
+
+}
+rmi <- mean(idwrmse)
+rmk <- mean(krigrmse)
+rmt <- mean(tpsrmse)
+rms <- c(rmi, rmt, rmk)
+rms
+## [1] 7.925989 8.816963 7.588549
+rme <- mean(ensrmse)
+rme
+## [1] 7.718896
+```
+
+##Question 6: Which method performed best?
+The kriging model returns the smallest RMSE, so that has the best performance.
+
+###Make a Weighted ensemble map
+```{r}
+weights2 <- ( rms / sum(rms) )
+s <- stack(idwoz1, ok1[[1]], tps1) #uses ok1[1] bc it's the prediction map
+ensemble <- sum(s * weights2)
+plot(ensemble)
+
+#ensemble is made, but is not being stacked with the other 3
+s2 <- stack(idwoz1, ok1[[1]], tps1, ensemble)
+
+names(s2) <- c('IDW', 'OK', 'TPS', 'Ensemble')
+plot(s2) #only plots the first three, doesn't plot ensemble for some reason
+```
+
+###Question 7: Show where the largest difference exist between IDW and OK.
+Can find differences between raster layers simply by doing arithmatic
+```{r}
+class(idwoz1) #already a raster layer
+class(ok1) #also raster
+#can subtract rasters to find the difference between the two
+difference <- idwoz1 - ok1[[1]]
+plot(difference)
+
+```
+
+
+###Show where the difference between IDW and OK is within the 95% confidence limit of the OK prediction.(Show where the IDW interpolation is within the 95% confidence limit of the OK prediction)
+
+Think of variance map as the mathmatical term "variance." In other words, standard deviation is the square root of variance. The 95% confidence interval is 1.96 standard deviations. Just like before, can do math on this raster. But, don't find the the difference, do the opposite of the difference.
+```{r}
+#get 95% ci map
+#ok1ci<-1.96*(sqrt(ok1[[2]]))
+#this doesn't work because when pulling from a sample data set, you need to include the size of the sample. x has 452 features
+
+ok1ci1 <- 1.96 * (sqrt((ok1[[2]])/452))
+
+#two maps, one with the upper confidence interval added to the prediction, one with the lower confidence interval
+upperci <- ok1[[1]] +ok1ci1
+lowerci <- ok1[[1]] -ok1ci1
+plot(upperci)
+plot(lowerci)
+
+#need to only keep the parts of upper and lower that overlap with IDW
+#idwoz2 <- idwoz1[idwoz1 >= lowerci & idwoz1 <= upperci]
+#plot(idwoz2)
+#this doesn't work! try something different
+
+#lets try making a new object, then changing things in the oject
+
+idwoz3 <- idwoz1
+idwoz3[idwoz3 <= lowerci | idwoz3 >= upperci] <- NA
+plot(idwoz3)
+
+
+
+```
+
+###Question 9: Can you describe the pattern we are seeing, and speculate about what is causing it?
+This map shows the overlap between the IDW map and the points for the kirging method that were within the 95% confidence interval. Maybe another way to think about it is, these are the points where the kriging method was relatively certain the interpolation was correct and the IDW aggrees. 
+
+###Question 10: Bonus question. Can you use the optim function to find the intercept and slope that is returned by lm (see below)
+```{r}
+set.seed(0) #the random deviates that y will use, sets this so its the same each time
+x <- 1:10 #x is numbers 1-10
+y <- runif(10) + 1:10/4 
+
+lm(y~x)
+
+##
+## Call:
+## lm(formula = y ~ x)
+##
+## Coefficients:
+## (Intercept)            x
+##      0.5186       0.2712
+
+y #is 10 observations that are random deviates from the uniform distribution. for each observation, add 1/4, 2/4, etc
+
+#Optim finds best parameters. You provide initial values and optim finds the best ones.
+#for optim, 1st arg, par= parameter values; 2nd arg, fn= function 
+
+#write a function for linear regression?
+
+#best <- optim(par= c(x,y), fn=lm) this doesn't work
+
+```
+
+#Bonus:  Comparing Ozone (O3) + Nitrogen Dioxide (NO2)
+
+###1. Interpolate NO2
+```{r}
+x2 <- read.csv(file.path(datapath, "airqual.csv"))
+
+#there are na's in the df
+x2 <- x2[!is.na(x2$NO2DLYAV),] # we need the comma here
+
+#get NO2 data in better units
+x2$NO2DLYAV <- x2$NO2DLYAV * 1000
+
+#add coordinate and transform
+coordinates(x2) <- ~LONGITUDE + LATITUDE
+proj4string(x2) <- CRS('+proj=longlat +datum=NAD83')
+TA <- CRS("+proj=aea +lat_1=34 +lat_2=40.5 +lat_0=0 +lon_0=-120 +x_0=0 +y_0=-4000000 +datum=NAD83 +units=km +ellps=GRS80")
+
+aq2 <- spTransform(x2, TA) #air quality data in the TA CRS
+class(aq2)
+#head(aq2)
+
+#g #CA counties as a spatial grid with the TA projection
+
+#make a variogram
+gsNO2 <- gstat(formula=NO2DLYAV~1, locations=aq2)
+vNO2 <- variogram(gsNO2, width=20)
+
+#fit the variogram
+fveNO2 <- fit.variogram(vNO2, vgm(85, "Exp", 75, 20))
+fveNO2
+plot(variogramLine(fveNO2, 400), type='l', ylim=c(0,150))
+points(vNO2[,2:3], pch=20, col='red')
+
+fvsNO2 <- fit.variogram(vNO2, vgm(85, "Sph", 75, 20))
+plot(vNO2, fvsNO2)
+
+#Not sure it matters which model to use, but I'll stick with exponential since that's what I used before
+
+#Krig!!!!
+kNO2 <- gstat(formula=NO2DLYAV~1, locations=aq2, model=fveNO2)
+
+kNO2p <- predict(kNO2, g)
+## [using ordinary kriging]
+spplot(kNO2p)
+class(kNO2p)
+
+#make it look good
+
+NO2k <- brick(kNO2p) #raster brick
+NO2k
+class(NO2k)
+
+
+NO2k2 <- mask(NO2k, catrans) #use catrans bc its the raster layer of counties
+names(NO2k2) <- c('prediction', 'variance')
+plot(NO2k2)
+class(NO2k2)
+
+```
+
+###2. Once you have an interpolation ﬁeld for both  O3 and NO2, compare the results by calculating the 5 number summary for both variables (min, 1st quartile, median, 3rd quartile, max) [hint summary ()] 
+
+```{r}
+summary(NO2k2)
+#         var1.pred   var1.var
+#Min.       3.120751   46.42725
+#1st Qu.    9.716651   81.00752
+#Median    11.503114  100.03123
+#3rd Qu.   14.068330  122.26790
+#Max.      40.583769  146.31379
+#NA's    5468.000000 5468.00000
+
+summary(ok1)
+
+#        var1.pred   var1.var
+#Min.      13.25344   27.77732
+#1st Qu.   27.49733   46.92070
+#Median    33.13652   58.08494
+#3rd Qu.   37.91154   75.83650
+#Max.      69.46779  107.40890
+#NA's    5468.00000 5468.00000
+
+
+```
+
+### 3. Using the spatial autocorrelation functions in the raster package calculate the Moran’s I, and Gi for both pollutants. And plot the results for Gi. 
+Moran's and Geary for ozone
+```{r}
+##OZ
+#if using Moran(), it takes a raster layer and a spatial weights matrix, same for LocalGeary
+
+#using inverse distance weights since that's what is used in other Moran's I calculations. Doesn't make sense to do with kriging  since that comes with it's own error estimate
+
+#Moran's I for oz
+class(idwoz1) #is a rasterlayer
+
+Moran(idwoz1)
+#1] 0.9424728 Mi = 0 means random, data is positively autocorrelated
+
+
+#Gi for oz. GearyLocal only returns a raster layer, not a number, so I'm doing Geary for the number, and GearyLocal to plot
+Gcoz <- Geary(idwoz1)
+Gcoz #[1] 0.01969853 means positive autocorrelation, far from 1 means more positive (over 1 means negative, 1 means random)
+
+Gioz<-GearyLocal(idwoz1)
+Gioz
+plot(Gioz)
+```
+
+```{r}
+##NO2
+#need inverse distance weights for NO2
+
+idmNO2 <- gstat(formula=NO2DLYAV~1, locations=aq2)
+idpNO2 <- interpolate(rca, idmNO2) #rca us raster of counties, related to g
+## [inverse distance weighted interpolation]
+idpNO2 <- mask(idpNO2, catrans)
+idpno <- idpNO2
+
+#this is an idw prediction, but it isn't with the optimal parameters. 
+
+#optim function finds IDW parameters (distance decay and nearest neighbors). You provide initial values and optim finds the best ones.
+
+RMSE <- function(observed, predicted) {
+  sqrt(mean((predicted - observed)^2, na.rm=TRUE))
+}
+
+
+f2 <- function(x2, test, train) {
+  nmx <- x2[1]
+  idpno <- x2[2]
+  if (nmx < 1) return(Inf)
+  if (idpno < .001) return(Inf)
+  m <- gstat(formula=NO2DLYAV~1, locations=train, nmax=nmx, set=list(idp=idpno))
+  p2 <- predict(m, newdata=test, debug.level=0)$var1.pred
+  RMSE(test$NO2DLYAV, p2)
+}
+set.seed(20150518)
+i <- sample(nrow(aq2), 0.2 * nrow(aq2))
+tst <- aq2[i,]
+trn <- aq2[-i,]
+opt2 <- optim(c(8, .5), f2, test=tst, train=trn)
+opt2
+#$par
+#[1] 6.7888942 0.5592996
+
+#$value
+#[1] 7.852719
+
+#$counts
+#function gradient 
+#      55       NA 
+
+#$convergence
+#[1] 0
+
+#$message
+#NULL
+
+#optimal IDW 
+nox <- gstat(formula=NO2DLYAV~1, locations=aq2, nmax=opt$par[1], set=list(idp=opt$par[2]))
+
+idwNO2 <- interpolate(rca, nox)
+## [inverse distance weighted interpolation]
+idwNO22 <- mask(idwNO2, catrans)
+plot(idwNO22)
+
+Moran(idwNO22)
+#[1] 0.9355682
+
+Geary(idwNO22)
+#[1] 0.026598
+
+GiNO2<-GearyLocal(idwNO22)
+
+plot(GiNO2)
+```
+
+####a) Do the results suggest spatial autocorrelation, if so which variable demonstrates greater correlation? 
+Both variables are spatially autocorrelated. The Moran's I is almost identical between the two, with ozone having a slightly higher MI. With Geary's smaller values occur when similar values are neighbors. Ozone has the smaller number, so again, it demonstrates higher autocorrelation.
+
+
+####b) How are neighbors deﬁned by these functions? [Hint check the help ﬁle] 
+Neighbors are 3x3 Queen's case
+
+####c) Using this information can you calculate the Moran’s I with a different deﬁnition of neighborhood?
+You can change how the weights matrix is created to change the neighbor definition. For example, by using the IDW as a matrix with Moran's you get a different MI:
+
+```{r}
+idwoz1matrix<- as.matrix(idwoz1)
+Moran(idwoz1, idwoz1matrix)
+#[1] 0.05240405 
+```
+
+
+####d) Can you calculate the Gi*?
+
+###4. For 2 and 3 as there are only two raster layers so you might have just duplicate all lines of code for both variables, but if you were comparing a larger number of variables that would get cumbersome. Try calculating the summary and spatial autocorrelation values for both variables using the apply() family of functions? 
+
+```{r}
+#1st arg, i want to do something to each column in df x2
+names(x2) #tells me which columns are air pollution variables
+class(x2) #already spatialpoints df
+
+#I'm trying to tell it to give me the summary of each column in x2, but it isn't recognizing summary as a function
+#lapply(4:34(x2), FUN=summary)
+```
+
+
+
+
