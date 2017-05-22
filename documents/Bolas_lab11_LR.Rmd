@@ -1,0 +1,261 @@
+---
+title: "Bolas_Lab11_LinearRegression"
+author: "Ellie Bolas, GEO200CN"
+date: "May 17, 2017"
+output: html_document
+---
+
+#Linear Regression
+###read in data
+```{r}
+library (data.table) 
+datapath <- "C:/Users/ebola/Google Drive/Git/GEO200CN/data"
+ROI <- fread (file.path (datapath, "geo200cn_roi.csv"), select=c("tract", "moppl2", "edppl1", "ecppl1", "ecppl2", "hsppl1", "moppl1", "ecplc1", "ecplc3", "hsplc2", "enplc4", "cntyname", "density"))
+ROI
+```
+Commute Time: Percentage of workers whose commute time is less than 30 minutes. [moppl2] 
+
+
+### Distribution of moppl2
+One of the assumptions of linear regression is that the response variable has an approximately normal distribution where the mean, mode and median are equal, and where the curve is symmetrical around these measurements of central tendency.  
+
+####1. Using hist() and summary() can we describe the distribution of moppl2 as approximately normal? 
+```{r}
+summary(ROI$moppl2)
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#  18.68   51.06   61.27   60.94   71.42   97.52 
+hist(ROI$moppl2)
+qqnorm(ROI$moppl2)
+```
+Yes, it's approximately normal, the mean and the median are almost equal. The histogram is slightly scewed toward higher values. The qqnorm plot shows a 1:1 relationship/normal distribution, too.
+
+###Multicollinearity
+Need to test the explanatory variables for collinearity. Important because if this is the case, it's difficult to seperate the effects of each predictor. To investigate this, use a correlation matrix.
+
+-Multicollinearity is when there is correlation between 3 or more variables, even though there wasn't correlation among the pairs of variables. To deal with multicollinearity:compute the Variance Influencing Factor
+
+>>In this case we’ll say that any covariant with a bivariate r of  0.1 or below with moppl2 will be excluded. Where there is multicollinearity measured by a r at or above 0.7 we will exclude the variable with the weakest relationship to moppl2, the lowest r<<
+
+-r is the letter used for the correlation coefficient= Pearson's r. 
+-bivariate means depending on two variables
+
+The above sentence means:
+1. in a bivariate relationship between moppl2 and another variable, exclude the variable with the weakest r, the least correlation.
+2. We also want to exclude multicollinearity, so look for any other variables that have a high r >=0.75 that indicate high correlations.
+
+####Make a correlation matrix exclude census tract, cntyname, density
+-are correlation and covariance matrix the same? (Lab instructions say covariance matrix, but this is a correlation matrix. Covariance- the amount of variation in x that can be explained with y. Correlation- how similar the points are moving together. plot one variable as x, one as y, if perfectly correlated, it will be a 45 line.)
+```{r}
+#install.packages("corrplot")
+library (corrplot)
+corrDF <- ROI[,c(-1,-12,-13)]
+
+#cor function computes correlation between variables
+#1st arg is the df, use arg means how to deal with NAs while computing, complete.obs means missing values are deleted
+M <- cor(corrDF, use="complete.obs") 
+M
+corrplot (M, method="color") #visualization of the matrix with darker colors indicating higher r
+corrplot (M, method="number") #with actual numbers of r
+corrplot.mixed (M) #one side is colors and size, one side is the numbers
+
+#covariance, just checking to see that it's different
+#q<-cov(corrDF, use="complete.obs")
+#q
+
+
+
+
+```
+
+####2. a) Annotate the snippet of script above. 
+See above
+
+####b) Which is any variables should we exclude because of a weak bivariate relationship to moppl2?   
+edppl1, the college education level of adults, has the weakest relationship with moppl2
+
+####c) Which if any variables should we exclude because of multicollinearity with other explanatory variables?
+There are a few sets of variables which demonstrate collinearity and should be excluded:
+ecplc3 and ecplc1, job availability and job quality demonstrate collinearity (r=0.75) 
+moppl1 and hsppl1, vehicle availibility and housing cost burden have an r=0.74
+hsppl1 and ecppl2 have an r=0.72 (housing cost burden and minimum base income)
+ecppl2 and ecppl1 have an r=0.7 (minimum income and employment rate)
+
+So, let's exclude those things! But, I'm not going to remove hsppl1 bc I will use that later. also, I'm removing the other variable it's correlated with, ecppl2, so that's ok
+```{r}
+ROI_trim <- fread (file.path (datapath, "geo200cn_roi.csv"), select=c("tract", "moppl2", "hsppl1", "moppl1", "hsplc2", "enplc4", "cntyname", "density"))
+```
+
+
+##Regression Analysis
+simple model first
+```{r}
+#lm, just put y~x, gives you the regression
+lm.fit = lm(moppl2~hsppl1, data=ROI_trim)
+lm.fit #parameters of lm.fit
+summary(lm.fit) #p-values, r2, etc.
+names(lm.fit) #the information stored in lm.fit
+coef(lm.fit) #pulls out paramters/coeffecients
+confint(lm.fit) #confiedence intervals
+predict (lm.fit, data.frame(hsppl1=(c(0,61,97))), interval="confidence") #confidence intervals at the given values of 0,61,97 for hsppl1
+predict (lm.fit, data.frame(hsppl1=(c(0,61,97))), interval="prediction") #predicted values for y at the given values of hsppl1, here the possible values are 0, 61, 97 
+
+plot(ROI_trim$hsppl1, ROI_trim$moppl2)  
+abline(lm.fit)
+
+```
+
+####3. How would you interpret the results so far? Thinking about the general questions we ask with regression:      
+####a) Is there a relationship between the response and explanatory variables?  
+Yes, there seems to be a relationship between commute time and housing cost burden, based on a high f-statistic.
+
+####b) What is the relationship and is it positive or negative? 
+It is a negative linear relationship: Commute time decreases as the percentage of people with a low housing cost burden increases.
+
+####c) How strong is the relationship?
+The relationship does not seem particularly strong beause the r^2 value is 0.13, much closer to 0 than 1. That means that not much of the variability is explained by the model. Additionally, the mean of moppl2 over all values is ~60, but the RSE is 12.56 which gives an error percentage of approximately 20%. This means that only 20% of the variance is explained by the model.
+
+
+####d) When hspp1 is 61 what is the predicted value of moppl2 and values that deﬁne the 95% conﬁdence and            predictor interval?
+
+The 95% prediction interval for values of mopppl2when hspp1 = 61 are 35.88626 (lower) 85.22918 (upper), and the prediction value is 60.5 The 95% confidence value for moppl2 is also as 60.5 (the mean), and the confidence interval is 59.69870, 61.41674.
+
+####Optional: Choose one of the variables with a weaker bivariate relationship to moppl2, and examine the relationship through another simple linear regression.
+
+```{r}
+lm.other <-lm(moppl2~hsplc2, data=ROI_trim)
+plot(ROI_trim$hsplc2, ROI_trim$moppl2)  
+abline(lm.other)
+
+summary(lm.other)
+```
+The R^2 is even closer to zero, the RSE is 13.26, not much different 
+
+#Multiple Linear Regression
+##Fit a Least Squares Model
+```{r}
+#fit a model with all the variables
+lm.fit2 <-lm(moppl2~., data=corrDF) #a period on the right side of the equation means include all the variables
+summary (lm.fit2)
+
+#fit a model with variables excluded for multicollinarity (only add variables of interest). This means include all variables (the period), except the four that we wrote in with a "-"
+lm.fit2b <- lm(moppl2~.-edppl1-ecppl2-moppl1-ecplc3, data=corrDF)
+#or, just add in the variables of interest
+lm.fit2a <-lm(moppl2~ecppl1+hsppl1+ecplc1+hsplc2+enplc4, data=corrDF) 
+summary (lm.fit2a)
+plot(lm.fit2a) #ths is cool bc it shows several plots with all the variables with hitting enter
+#this shows me all four plots at once
+par(mfrow=c(2,2)) 
+plot(lm.fit2a)
+
+```
+####4. How would you interpret the results for lm.ﬁt2 or lm.ﬁt2a? Thinking about the general questions we ask with regression:      
+####a) Is there a relationship between the response and explanatory variable?   
+The relationship between moppl2 and the group of values is similar to what was seen between only moppl2 and hsppl1 (lm.fit). The RSE is just under 20% at 11.08. The R^2 is slightly larger, but there is still a lot of unexplained variance. So, there is a slight relationship.
+
+####b) Which explanetory variables have a statistically signiﬁcant relationship to the response?     
+ecppl1, hsppl1, ecplc1, and enplc4 all have p values < 0.05.
+
+
+####c)  Compare and contrast the results from lm.ﬁt with lm.ﬁt2 or lm.ﬁt2a. How does the overall relationship  between the response and explanatory change? How much of the variation in moppl2 is explained by each model. How might you explain these changes. Do the relationships between particular explanatory variables change. [Hint: Take a look at the F-statistics and Rsquares, as well as the coefﬁcients and p-values for individual variables.]
+lm.fit (just two variables) has the highest f-statistic, followed by lm.fit2a (the trimmed data set), and lastly lm.fit(the entire data set), meaning that the strongest relationship is seen in lm.fit. This seems to be influenced by how many of the values have a significant p value. All of the plots are relatively similar in terms of RSE- each plot is around 20% (when comparing RSE to the mean.) So, all of these models have a lot of variance that isn't explained/doesn't fit with the models themselves. The highest R^2 values are in the multiple linear regression models, and are around .3. Again, this means that the models have a lot of variance. Also, even though the R^2 values are slightly higher, this is expected as they will increase when more variables are added. Interestingly, between lm.fit2 and lim.fit2a, some of the explanatory variables seem to change their relationship with moppl2. ecppl1 has a much smaller pvalue when part of the regression for the entire data set. In contrast, hsplc2 has a smaller pvalue in the reduced data set.
+
+##Best Subset Selection
+Automate the covariate selection process. regsubsets performs best subset selection by identifying the best model that contains a given number of predictors, where best is quantiﬁed using RSS
+```{r}
+#remove census tracts with missing values for any varirable
+corrDF=na.omit (corrDF) 
+dim(corrDF)
+sum(is.na(corrDF)) #0, no nas
+
+#Subset
+#install.packages("leaps")
+library (leaps) 
+#regsubsets is model selection by exhaustive search. uses same syntax as lm. by default is only returns 8 values, nvmax lets you set that higher
+regfit.full <- regsubsets(moppl2~., corrDF, nvmax=9)
+reg.summary <-(summary (regfit.full)) 
+reg.summary
+names (reg.summary)
+
+```
+
+####Plot Subsections: Plotting RSS, adjusted R2, Cp, and BIC togther, can help us decide what on the best overall model. (Remeber R2 will simply increase as more variables are added to the model.) The functions which.max() or which.min(), as appropriate will identify the best model using any particular measurement. Remember for adjusted R2 you are looking for the max and for Cp and BIC you are looking for the min.
+```{r}
+par(mfrow=c(2,2)) #sets the panel to see multiple plots at a time 
+plot (reg.summary$rss, xlab="Number of Variables", ylab="RSS", type="l") #show relationship between RSS and number of variables- which number of variables is it best to use to use for minimal RSS. RSS gets smaller as more variables added (as is always the case)
+
+#Rsq
+plot (reg.summary$adjr2, xlab="Number of Variables", ylab="Adjusted RSq", type="l")  #how many variables are needed for adj R^2 to reach its maximum. Looks like it hits that around 5.
+
+which.max(reg.summary$adjr2) #I'm wrong, this tells us the max r^2 happens with 8 variables
+points(8, reg.summary$adjr2[8], col="red", cex=2, pch=20) #adds a point at the max R^2
+
+#Cp
+plot (reg.summary$cp, xlab="Number of Variables", ylab="Cp", type="l") #plots Cp against variables.  Cp assesses fit of the model, and a small Cp means its relatively precise
+which.min(reg.summary$cp) #6 variables is when we get a small Cp   
+points(6, reg.summary$cp [6],col="red",cex=2,pch=20) #added a point to the Cp 
+#BIC
+which.min(reg.summary$bic) #bic is Bayesian Information Criterion, here the value is 5. 
+plot (reg.summary$bic, xlab="Number of Variables", ylab="BIC", type='l')  #plots the BIC
+points(5, reg.summary$bic [5],col="red", cex=2, pch=20) #adds a point for the best BIC value
+```
+
+####5. Annotate this snippet of code, and compare and contrast the results. [Hint: compare these different measures and think about why they return different best models] 
+Annotated above. Cp adds a penalty to the RSS for each additional variable. The lower the test error (the RSS error), the smaller the value that Cp takes on. Cp=AIC in this case, and uses maximum likelihood to fit. The BIC value is the smallest. This is becauseBIC also takes a small value for low test error models, and puts a penalty on for additional variables. But, BIC uses a heavier penalty, the value returned is usually smaller than Cp. The R^2 is large because R^2 is the opposite- a large value indicates a small test error. A large adjR^2 has only valuable variables and no noise variables.
+
+Plot all the subsets
+```{r}
+par(mfrow=c(2,2)) 
+plot (regfit.full, scale="r2") 
+plot (regfit.full, scale="adjr2") 
+plot (regfit.full, scale="Cp") 
+plot (regfit.full, scale="bic")
+coef(regfit.full, 5)
+
+#best model coefficients:
+#(Intercept)      ecppl1      ecppl2      hsppl1 
+#-4.13971323  0.42687859 -0.11016995 -0.13724329 
+#     ecplc1      enplc4 
+# 0.01393457  3.11634010 
+
+```
+
+You can use  reg.summary () to conduct forward or backwards subsection selection. 
+```{r}
+regfit.fwd <-regsubsets(moppl2~., corrDF, nvmax=9, method="forward") 
+sumregfwd<-summary (regfit.fwd)
+regfit.bwd = regsubsets(moppl2~., corrDF, nvmax=9, method="backward") 
+sumregbwd<-summary (regfit.bwd)
+
+```
+
+####6. repeat the steps above to compare and contrast the best models using forward and backwards subset selection with each measure (RSS, adjusted R2, Cp, and BIC). Are the selected explanatory variables largely the same? Do predicted covarients differ? How do these models compare the lm.ﬁt2 above? 
+```{r}
+#Forward
+par(mfrow=c(2,2)) 
+plot (sumregfwd$rss, xlab="Number of Variables", ylab="RSS", type="l") 
+
+#Rsq
+plot (sumregfwd$adjr2, xlab="Number of Variables", ylab="Adjusted RSq", type="l")  
+which.max(sumregfwd$adjr2) #8
+
+#Cp
+plot (sumregfwd$cp, xlab="Number of Variables", ylab="Cp", type="l") 
+which.min(sumregfwd$cp) #6
+
+#BIC
+which.min(sumregfwd$bic) #5
+
+plot (reg.summary$bic, xlab="Number of Variables", ylab="BIC", type='l') 
+coef(regfit.fwd,5)
+#(Intercept)      ecppl1      ecppl2      hsppl1      ecplc1      enplc4 
+#-4.13971323  0.42687859 -0.11016995 -0.13724329  0.01393457  3.11634010 
+
+#Backward
+which.max(sumregbwd$adjr2) #8
+which.min(sumregbwd$cp) #6
+which.min(sumregbwd$bic) #5
+coef(regfit.bwd,5)
+#(Intercept)      ecppl1      ecppl2      hsppl1      ecplc1      enplc4 
+#-4.13971323  0.42687859 -0.11016995 -0.13724329  0.01393457  3.11634010 
+```
+All of the subsetting returns the same results. The models all want the same number of variables, and the coefficients are the same, regardless of the subsetting. However, the subsetting does return different values than lm.fit2 (with all variables.) The intercept is slightly lower in the subsetting (subsetting=-4.1, lm.fit2=-3.5.) There is slight variation in a couple of the variables-ecppl1 and ecppl2 show the most difference between lm.fit2 and the subset of data. The other variables have almost the same value.
