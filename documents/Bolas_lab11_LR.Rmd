@@ -17,7 +17,7 @@ Commute Time: Percentage of workers whose commute time is less than 30 minutes. 
 
 
 ### Distribution of moppl2
-One of the assumptions of linear regression is that the response variable has an approximately normal distribution where the mean, mode and median are equal, and where the curve is symmetrical around these measurements of central tendency.  
+One of the assumptions of linear regression is that the response variable has an approximately normal distribution where the mean, mode and median are equal, and where the curve is symmetrical around these measurements of central tendency. <- this is not right. Actually, the residuals need to be normally distributed, not the variable itself
 
 ####1. Using hist() and summary() can we describe the distribution of moppl2 as approximately normal? 
 ```{r}

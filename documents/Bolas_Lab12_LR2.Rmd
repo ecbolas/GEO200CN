@@ -1,0 +1,177 @@
+---
+title: "Bolas_Lab12, regression-linear and logistic"
+author: "Ellie Bolas, GEO200CN"
+date: "May 22, 2017"
+output: html_document
+---
+#Regressions with Qualitative Variables
+Linear Model pieces:
+Part 1.
+-null model: just use the mean
+  -what happens when you run a model of your data with no data
+-f statistic: tests if using predictors is better than using a mean
+  -uses f distribution, where along the distribution does our f statistic lie? If it's at the edge of the curve, then it's significant. We don't really need to know what the f-stat number needs to be. We just need to know what the computer tells us based on the p value.
+Part 2.
+-given we want to use predictors, these are the predictors we want to use. Just check p values again
+
+##Qualitative Explanatory Variable 
+ We’ll add the qualitative variable County name [cntyname] to the model with moppl2 as the response
+ 
+read in data
+```{r}
+library (data.table) 
+datapath <- "C:/Users/ebola/Google Drive/Git/GEO200CN/data"
+ROI <- fread (file.path (datapath, "geo200cn_roi.csv"), select=c("tract", "moppl2", "edppl1", "ecppl1", "ecppl2", "hsppl1", "moppl1", "ecplc1", "ecplc3", "hsplc2", "enplc4", "cntyname", "density"))
+ #remove NAs 
+ROI=na.omit (ROI) 
+dim(ROI)  
+sum(is.na(ROI))
+```
+
+Start by ﬁtting a regression with just cntyname. Which will create a series of dummy variables for each value of the variable with Contra Costa as the index variable. (This is an ANCOVA linear model, Bo, the reference category in Contra Costa)
+####Linear Model of cntyname
+```{r}
+lmfit <-lm(moppl2~cntyname, data=ROI) 
+summary (lmfit)
+names(ROI$cntyname)
+
+```
+Given that you can interpret β0 as the average for moppl2 for Contra Costa county, and β1 as the difference in average for moppl2 between Contra Costa and Napa counties (add to it if the coefﬁcient is positive subtract if it is negative,  β2 as the difference in average for moppl2 between Contra Costa and Sacramento counties, etc.
+
+-What if we want to compare Solano to Napa? Compare Solano to Contra and then Napa to Contra, then look at those two things.
+
+####1. Interpret the results above:      
+####a) Are there signiﬁcant relationships between various counties and commute times? 
+Yes! The f statistic has a p-value <0.05, so the null is rejected and we determine that there is a relationship between county and commute time. Further, each county has a significant value, meaning that each individual county has a relationship with commute time. However, there is some variation in the data, as the adjrsq is 0.3381.
+
+####b) What is the average value of moppl2 for Solano County.
+Add Solano to Intercept (Contra) = 57.4154
+
+####c) Describe the overall relationships between variables  [Hint think about values of the R-square, p-value] 
+Adjrsq- percentage of variation explained by the model. adr2=.3= 33%. Apperently 33% is good for human-related data. So, we can say there is a relationship. Also, the pvalues are all significant, indicating that there is definitely a relationship.
+
+####Cross Validate cntyname
+Next let’s use cross-validation to include cntyname in a calculation to identify the best subset of explanatory variables.
+```{r}
+library(leaps)
+# First we deﬁne a function that will calculate the predicted value for regsubsets(). Basically, the function below is a written out version of regsubsets, which subsets for the best parameters for a model. We want this as a function b/c we are are doing a 10-fold cross validation. 
+predict.regsubsets <- function (object, newdata, id){
+  form=as.formula(object$call [[2]])  
+  mat=model.matrix(form,newdata) 
+  coefi=coef(object ,id=id)  
+  xvars=names(coefi)  
+  mat[,xvars]%*%coefi
+}
+  
+
+#Next we’ll use a 10-fold cross validation to identify the best subset. We want to select the subset based only on a training set so we have an accurate estimate of the test error. In the cross-validation method we will select the best subset for each of the k training sets (in our case 10 sets). First we create a vector that assigns each observation into one of the ten folds, and then create a matrix to store the results. [in deﬁning cv.error the 14 referneces the number of explanetory variables that will be included in the best ﬁt calculations (p). Each of the dummy variables is included in that count.]  
+
+k=10 
+set.seed(2) 
+folds<-sample(1:k, nrow(ROI), replace=TRUE) 
+cv.errors<-matrix(NA, k, 14, dimnames=list(NULL, paste(1:14)))
+
+#Using a loop we will where in each jth-fold each elements of folds that equals j is in the test set and rest in the training set. The new predict function will the be called to compute the test MRE (Mean Square Errors), and store the in the matrix cv.errors. 
+for(j in 1:k) {
+   best.fit=regsubsets(moppl2~edppl1+ecppl1+ecppl2+hsppl1+moppl1+ecplc1+ecplc3+hsplc2+enplc4+cntyname, data=ROI[folds!=j,], nvmax=14) 
+   for(i in 1:14) {
+     pred=predict(best.fit, ROI[folds==j,],id=i)
+     cv.errors[j,i]=mean( (ROI$moppl2[folds==j]-pred)^2)
+} 
+}
+
+mean.cv.errors<-apply(cv.errors, 2,mean) 
+mean.cv.errors
+#gives the error values for different numbers of variables, the lower error value is for 10 variables
+par(mfrow=c(1,1))
+
+#next we use the best subset selection of the full data set to ﬁnd the best 11-variable model, and calculate the coefﬁcients
+regfit.best<-regsubsets(moppl2~edppl1+ecppl1+ecppl2+hsppl1+moppl1+ecplc1+ecplc3+hsplc2+enplc4+ cntyname, data=ROI,nvmax=14) 
+coef(regfit.best, 10) 
+
+```
+
+##Classification-Logistic Regression
+In this section density is the response vaiable, and so we are asking if we can classify census tracts into High Denisty (HD) or Low Density (LD) tracts, using a set of explanetory variables. 
+
+####Logistic Regression of Density
+-glm() is like lm, but gives options for how to fit the model. Can do gaussian, poisson, binomial, Gamma
+```{r}
+#binomial model, logistic regression
+#glm.fit<-glm(density~moppl2+ecppl1+hsppl1+ecplc3+hsplc2+enplc4, data=ROI, family=binomial) 
+
+#y values must be 0 <= y <= 1, means need to change the class for density
+
+class (ROI$density) #[1] "character" 
+ROI$density <-as.factor(ROI$density)
+
+glm.fit<-glm(density~moppl2+ecppl1+hsppl1+ecplc3+hsplc2+enplc4, data=ROI, family=binomial) 
+summary (glm.fit) 
+```
+
+####2. Provide an interpretation for the results, remembering that contrasts (ROI$density) tells us that HD was coded 0 and LD 1.
+
+Since LD is coded as 1, this model shows the relationship between the variables and the probability of a tract being low density.  Only 3 of the variables, hsppl1, ecplc3, and hsplc2 have a p value that indicates a relationship. Of those, two have a negative coefficient, meaning they (ecplc3 and hsppl1, housing quality and housing cost) are less likely to occur in low density tracts, particularly hsplc2 because it is a larger number. hsplc2, housing affordability is more likely in low density tracts
+
+The way the coefficients are fit, they can't be restricted to between 0 and 1. R does the link function for you, to make the numbers between 0 and 1. For binomial, our link is logit. 
+
+
+####Predicting density probability
+Use predict() and type=“response” to output the probablilites P (Y=1|X), to  gives us the probability of Low Density coded 1.
+```{r}
+glm.probs<-predict(glm.fit, type="response") #gives us predicted probabilities, type= the type of link to get hte probabilities
+length(glm.probs) #823, same as number of records. gives the prob. of low density for each census tract
+glm.probs[1:10] #lets just look at 10 of those predictions
+#Using these calculations we can then assign each result to either HD or LD, in this we’ll use a probability of 0.5 as our cut off (in otherwords is there more than a more or less than 50% chance that it is HD or LD)
+
+#First create a vector of 823 HD elements (823 is our n).
+glm.pred<-rep("HD", 823)
+# line transforms to LD all of the elements for which the predicted probability is above 0.5
+glm.pred[glm.probs>0.5]<-"LD"
+#glm.pred - soo much, that's why we use the table function
+
+#Next use the table() function to produce a confusion matrix, the table that outputs true (correct) predictions of the diagonal (northwest to southeast quadrants) and false (incorrect) predictions of the off-diagonal (southwest to northeast quadrants)
+table(glm.pred, ROI$density) #meaning, HD is HD in 767 cases, LD = LD in 16 cases, and then the off-diagonals are incorrect cases.
+mean(glm.pred==ROI$density) #0.9514
+# the mean tells us that 95.14% of the time the values and being classiﬁed correctly.  95% of the time we will be on the diagonal and go it right. On the flip side, 4.9% of the time it is wrong, this is the training error rate.
+```
+
+####Test Density Probability Predictions
+```{r}
+#First we will create a training and test set using seed.set() which gives us a psedorandom set of numbers for replicatebly results
+attach(ROI) #tells R to search this data based when evaluating a variable. turns all the columns of dataframe into their own variables
+set.seed (1) #make sure this gets run each time you run the sample
+train <-sample (c(TRUE, FALSE), nrow(ROI), rep=TRUE) #pull true and false out of a bag the number of times that there are rows in roi
+#head(train)
+
+test <-(!train) #does the exact same thing as train, but in reverse
+#head(test)
+
+dim (ROI[test,]) #look at the dimensions of ROI being subsetted by test. tell us how much of ROI you pulled out for test
+#The output tells us that we have 401 cases(rows) in the test set, 13 refers to the columns (number of variables for ROI)
+
+density.test <-density[!train] #density is a vector, it has only one dimension. we are asking what subset of density is the test data and saving it
+
+# ﬁt our model with just the training data, and subset.
+glm.train<-glm (density~moppl2+ecppl1+hsppl1+ecplc3+hsplc2+enplc4, data=ROI[train,], family=binomial)
+glm.probstest<-predict(glm.train, ROI[test,], type="response") #here we use the test data against training data to get our predictions
+
+glm.predHD<-rep("HD", 401) #repeat HD 401 times
+glm.predHD[glm.probstest>.5]="LD" #we added LDs whenever the prob .5
+table(glm.predHD, density.test) 
+
+mean (glm.predHD==density.test) #[1] 0.9351621
+#93% of the time, it's on the diagonal of the dummy data
+mean(glm.predHD!=density.test) #[1] 0.06483791 
+#6% of the time you will land on the dummy data off diagonals
+```
+
+####3. a) How many HD and how many LD were correctly predicted? 
+The cross validation correctly predicts 368 HD and 7 LD tracts, a total of 375 correct predictions
+
+####b) what percent of the census tracts were correctly predicted?  
+93.5% of the time the census tracts are correctly predicted.
+####c) what is the test error rate? 
+6.5% of the time this model predicts census data incorrectly (this is the error rate.)
+####d) why is the training error often over optimistic in terms of the predivive power of the model? 
+The training error rate (meaning the error rate in the model made with our actual data) tends to underestimate the test error rate.In this case, the training error rate is 4.9%, which DID underestimate the test error of 6.5%. This may be because the initial model is run with variables that don't have a significant relationship with density (based on p values), and so the training data model could be more accurate if these variables are removed. 
