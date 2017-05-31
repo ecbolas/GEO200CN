@@ -1,0 +1,143 @@
+---
+title: "Bolas_Lab13_SpatialDependence"
+author: "Ellie"
+date: "May 24, 2017"
+output: html_document
+---
+
+#Spatial Dependence- Spatial Lag and Spatial Error Models
+
+#Get to Know Data
+```{r}
+library(maptools)
+library(rgdal)
+library(raster)
+library(latticeExtra) 
+datapath<-"C:/Users/ebola/Google Drive/Git/GEO200CN/data/ROI"
+#ROI <- readOGR(dsn=datapath, layer = "geo200cn_ROI") #this makes the box 32-bit instead of 64-bit. The data originally had a 64-bit box, which R can't read. the way to learn if it is wrong is to do str, which i should always do with data!:
+#str(ROI@data) gives me variables, some of which have numbers but are called factors. that is what tells me it's pulling things in as strings, rather than numbers. I can also tell that the numbers are small, so I don't actually need the 64-bit box
+
+ROI <- readOGR(dsn=datapath, layer = "geo200cn_ROI", integer64 = "allow.loss") #allow.loss lets us let go of the box size and shrink down to 32-bit, which is fine bc these numbers aren't that big and don't need 64-bit
+proj4string(ROI) #this is the same as what was written in the given code, so I think it's ok
+plot(ROI)
+
+#plot moppl2 to look for patterns with spplot
+grps <- 5 
+
+brks <- quantile(ROI$moppl2, 0:(grps-1)/(grps-1), na.rm=TRUE) #for quantile, give it a raster object, it computes quantiles from cell values. this is then used with ssplot to assign colors to the quantiles based on the values of moppl2
+
+p <- spplot(ROI, "moppl2", at=brks, col.regions=rev(brewer.pal(grps, "YlGn")), col="transparent" ) 
+
+p + layer(sp.polygons(ROI))
+
+#also plot it with tmap
+library (tmap) 
+qtm (shp=ROI, fill="moppl2", fill.palette="Greens")
+
+#remove NAs
+ROI <- ROI[!is.na(ROI@data$moppl2),]
+
+```
+####1. Describe the pattern you see in the data in your own words.
+The data does appear to be positively spatial autocorrelated. Generally, areas with a higher value of moppl2 (commute time) are clustered together.
+
+####Weight's Matrix
+identify nearness
+```{r}
+library(spdep)  
+xy <- coordinates(ROI) 
+nb2500 <- dnearneigh(xy, 0, 2500) 
+#dnearneigh finds neighbors by euclidean distance between upper and lower bounds. 1st argument is matrix of points or spatialpoints object; 2nd arg, d1= lower distance; 3rd arg, d2 = upper distance; row.names= region ids; longlat, if true, measure in km, if false, take values from the object
+w2500 <- nb2listw(nb2500, zero.policy=TRUE) #gives spatial weights to the neighbors list. zero.policy=true means there can be zero-length weights vectors
+
+print(w2500, zero.policy=TRUE)
+```
+
+####2. a) On average how many neighbors does a census tract have? 
+Each census tract has approximately 5 neighbors.
+
+####b) how many census tracts have no neighbors? 
+107 tracts have no neighbors
+
+####Now can calculate the Moran’s I [remember you could also  use Monte Carlo calculations with moran.mc()]. 
+####3. provide an interpretation of the results. 
+```{r}
+MORmoppl2 <-  moran.test (ROI$moppl2, w2500, zero.policy=TRUE)
+MORmoppl2
+```
+The Moran's I is positive, which signifies positive autocorrelation. The statistic itself is greater than 0.3, indicating that the data is highly autocorrelated, and the pvalue is less than 0.05, indicating that this is a statistically significant result.
+
+#Regression Analysis
+##OLS Model
+```{r}
+OLSlm <- lm(moppl2~ecppl1 + hsppl1 + ecplc1 + enplc4, data=ROI)  
+summary (OLSlm) #this is fixed now, but the code originally broke here: it should only do 5 intercepts, not unlimited intercepts. This tells us that it thinks that these variables are not numberic, reading them in as strings (factors), but is trying to turn them into one. That's why it's better to put 9999 for missing data. It thinks it's a character because the data was stored as 64-bit integers which is used to store huge numbers, R doesn't know how to read that, so it reads it as strings. The numbers need to be stored as 32-bit, which is what R likes to read. Need to fix this in readOGR
+
+```
+
+####An important step in evaluating the ﬁt of a model is calculating the residuals, the variance of y not explained by the model. An important assumption is that these will not be produced by a systematic process so they should have a normal distribution ε~N(0,δ2 I), they should also be include being homosketatistic, and independant (or not autocorrelated).
+
+##Plot OLS Diagnostics
+```{r}
+par(mfrow = c(2, 2)) 
+plot (OLSlm)
+
+```
+QQ Plot: normal (in a straight line) with some outliers
+
+##Mathmatical OLS Diagnostics:
+Breusch-Pagen: tests for heteroscedasticity (non-constant variation in residuals) and Moran's I: test for residual spatial autocorrelation
+```{r}
+#install.packages("lmtest")
+library (lmtest) 
+bptest (OLSlm) 
+#BP = 9.4831, df = 4, p-value = 0.05009
+lm.morantest (OLSlm, w2500, zero.policy=TRUE)
+#observed moran's I: 0.4409669549   
+
+```
+####4. Interpret the results from the Breusch-Pagen and Moran’s I test of the residuals
+The BP p value=0.05. Because it isn't less than 0.05, the null hypothesis cannot be rejected, so the residuals are assumed to be homosketatistic (equal variation in residuals.) For the Moran's I test, the observed Moran's I is 0.44, which indicates that the residuals are significantly positively autocorrelated. 
+
+Use Lagrange Multiplier Test to identify where the strongest spatial dependence is and help choose between using a spatial error or spatial lag model. Focus on signiﬁcance for now represented by the p-value, where the process is to ﬁrst examine the simple tests if either of those are siginifant you start with that form of spatial regession.
+```{r}
+lm.LMtests (OLSlm, w2500, zero.policy=TRUE, test='all')
+```
+In our case both of the simple tests are siginifcant and the robust error test is also signiﬁcant, so we’ll start with a spatial error model
+
+##Spatial Error Model
+```{r}
+ERRlm <-errorsarlm(moppl2~ecppl1+hsppl1+ecplc1+enplc4, data=ROI, listw=w2500, zero.policy=TRUE)
+summary (ERRlm) 
+
+#model residuals
+resid <- (resid(ERRlm)) 
+pred = predict(ERRlm, type="response") 
+plot (pred, resid) 
+bptest.sarlm (ERRlm) 
+#BP = 20.452, df = 4, p-value = 0.0004065
+#reject null, data heteros
+moran.test (resid, w2500, zero.policy=TRUE)
+#resid are negatively autocorrelated, dispersion, Moran's I:  -0.0274566289 
+
+```
+####5. And Interpret these results, including what they tell you about the ﬁt of the model as compared to the OLS, and any questions of concerns they might raise.
+In this model, the BP p-value is under 0.05, which means the there is a pattern in residual variance. However, the residuals are negatively spatially autocorrelated, indicating there is not a relationship between them. This is a different interpretation then the OLS model (BP and Moran's I were both opposite.) However, my question is: How can the residuals show a pattern in how they vary, but not be autocorrelated?
+
+##Spatial Lag Model
+```{r}
+LAGlm <-lagsarlm(moppl2~ecppl1+hsppl1+ecplc1+enplc4, data=ROI, listw=w2500, zero.policy=TRUE)
+summary (LAGlm)
+#AIC: 6263.6, (AIC for lm: 6361.6)
+
+#AIC of spatialerror: AIC: 6054.6, (AIC for lm: 6361.6)
+
+
+```
+
+####7.  a) comare the two spatial models. For example looking at the AIC for both which would you choose as the best model? 
+The spatial error is the better model because its AIC is lower. 
+
+
+####b) Compare and contrast the coiefﬁcients of all three models what are the diffrences in magnitude and signifcance. How might you explain any differences
+ For SE model and SL model have a different initial intercept. However, the coefficients for the 4 variables (ecppl1, hsppl1, ecplc1, and enplc4) are almost equal. For the lag model, hsppl1, ecplc1, and enplc4 all have z values that are pretty large, so thet are far from the average for the data. In the error model,these 4 have the largest z values, but they are not as large as in the lag model. So, the data seems to fit a normal distribution better in the error model. This means that when the spatial autocorrelation and variance in the residuals is treated as general spatial error, this model is the best fit for the data. The OLS model isn't the best to use, because of the error and patterns in the residuals, and the connection of y values across observations.
