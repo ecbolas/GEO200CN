@@ -1,0 +1,133 @@
+---
+title: "Bolas_lab14_GWR"
+author: "Ellie, GEO200CN, Spring 2017"
+date: "May 31, 2017"
+output: html_document
+---
+#Geographically Weighted Regressions
+
+##Re-fit OLS 
+```{r}
+library(maptools)
+library(rgdal)
+library(raster)
+library(latticeExtra) 
+#read in data
+datapath<-"C:/Users/ebola/Google Drive/Git/GEO200CN/data/ROI"
+ROI <- readOGR(dsn=datapath, layer = "geo200cn_ROI", integer64 = "allow.loss")
+
+#remove missing data
+ROI <- ROI[!is.na(ROI@data$moppl2),]
+
+#fit OLS model
+OLSlm <- lm(moppl2~ecppl1 + hsppl1 + ecplc1 + enplc4, data=ROI)
+summary(OLSlm)
+
+#look at residuals
+par(mfrow = c(2, 2)) 
+plot (OLSlm)
+
+#BP Test
+library (lmtest) 
+bptest (OLSlm) 
+
+#Make spatial weights to calculate Moran's I of residuals (not of the original data)
+library(spdep)  
+xy <- coordinates(ROI) 
+nb2500 <- dnearneigh(xy, 0, 2500) #neighborlist
+w2500 <- nb2listw(nb2500, zero.policy=TRUE) #gives spatial weights to list
+print(w2500, zero.policy=TRUE)
+lm.morantest (OLSlm, w2500, zero.policy=TRUE)
+
+#add residuals to ROI and then map them as polygons
+OLSresidDF <- as.data.frame (resid(OLSlm))
+ROI$OLSresid <- OLSresidDF$"resid(OLSlm)" #tells it you want the column name, not to do the function
+str(OLSresidDF)
+head(ROI)
+library (tmap) 
+qtm (shp=ROI,  fill="OLSresid", fill.palette="div")
+
+#or plot residuals as points using centroid coordinates
+OLSresid1 <- resid(OLSlm) 
+MAPresids = SpatialPointsDataFrame(data=data.frame(OLSresid1), coords=xy, proj4string=CRS("+proj=robin +lon 0=0")) 
+qtm (shp=MAPresids, symbols.col="OLSresid1", symbols.shape=20)
+
+```
+
+##Global Spatial Regression Model
+```{r}
+#Run the Lagrange Multiplier test to select between a Spatial Lag and Spatial Error model
+lm.LMtests(OLSlm, w2500, zero.policy=TRUE, test = 'all')
+# focus on signiﬁcance of the tests represented by the p-value, and ﬁrst examine the     simple tests if either of those are siginifant you start with that form of spatial regession, if both are   siginiﬁcant look at the results of the robust tests
+
+#both the simple and the robust tests were significant, but the pvalues are a little better for the spatial error model
+
+#Spatial Error
+ERRlm <-errorsarlm(moppl2~ecppl1+hsppl1+ecplc1+enplc4, data=ROI, listw=w2500, zero.policy=TRUE)
+summary(ERRlm)
+class(ERRlm)
+
+
+#model residuals
+resid <- (resid(ERRlm)) 
+pred = predict(ERRlm, type="response") 
+plot (pred, resid) 
+bptest.sarlm (ERRlm) 
+#BP = 20.452, df = 4, p-value = 0.0004065
+moran.test (resid, w2500, zero.policy=TRUE)
+#Moran I statistic       Expectation          Variance 
+#    -0.0274566289     -0.0013869626      0.0006492813 
+#p value = .8469
+```
+According to the tests, the BP p-value is under 0.05, which means the there is a pattern in residual variance, or the data has heteroskasticity. However, according to the Moran's I, the residuals are negatively spatially autocorrelated, indicating there is not a relationship between them, but this is not statistically significant.
+
+##Local Regression: Geographically Weighted Regression
+Uses kernal density estimates to define nearness, using a Gaussian (bell-shaped) kernal. We need to caluclate an optimal bandwidth, then use this to fit the GWR.
+```{r, cache= TRUE}
+#install.packages("spgwr")
+library(spgwr)
+
+#find optimal bandwidth: For cross-validation, this scores the root mean square prediction error for the generalised geographically weighted regressions, choosing the bandwidth minimizing this quantity
+bwROI <- ggwr.sel(moppl2~ecppl1+hsppl1+ecplc1+enplc4, data=ROI, gweight = gwr.Gauss,  verbose = TRUE)
+#verbose=true means it will report on its progress
+
+#ﬁt the model using the optimal bandwidth 
+GWRlm <- gwr(moppl2~ecppl1+hsppl1+ecplc1+enplc4, data=ROI, bandwidth = bwROI, hatmatrix = TRUE) 
+GWRlm
+
+```
+
+####Map Results to understand spatial patterns
+```{r}
+names (GWRlm$SDF) #will show you all the available results
+
+#map a single variable, ecppl1
+qtm (shp=GWRlm$SDF, fill="ecppl1", fill.palette="Blues")
+
+#We’ll use the ﬁtted coiﬁicients and the standard error to calculate a t-statistic and map the siginicance, with |4| as our cut off for signiﬁcance
+t = (GWRlm$SDF$ecppl1/GWRlm$SDF$ecppl1_se) 
+MAPt = SpatialPointsDataFrame(data=data.frame(t), coords=xy, proj4string=CRS("+proj=robin +lon 0=0")) 
+qtm (shp=MAPt, symbols.col="t", symbols.shape=20)
+
+#map hsppl1
+v = (GWRlm$SDF$hsppl1/GWRlm$SDF$hsppl1_se) 
+MAPv = SpatialPointsDataFrame(data=data.frame(v), coords=xy, proj4string=CRS("+proj=robin +lon 0=0")) 
+qtm (shp=MAPv, symbols.col="v", symbols.shape=20)
+
+#map ecplc1
+u = (GWRlm$SDF$ecplc1/GWRlm$SDF$ecplc1_se) 
+MAPu = SpatialPointsDataFrame(data=data.frame(u), coords=xy, proj4string=CRS("+proj=robin +lon 0=0")) 
+qtm (shp=MAPu, symbols.col="u", symbols.shape=20)
+
+#map enplc4
+w = (GWRlm$SDF$enplc4/GWRlm$SDF$enplc4_se) 
+MAPw = SpatialPointsDataFrame(data=data.frame(w), coords=xy, proj4string=CRS("+proj=robin +lon 0=0")) 
+qtm (shp=MAPw, symbols.col="w", symbols.shape=20)
+
+```
+####GWR Interpretation
+The GWR shows how the relationships vary over space. This AIC is smaller the the spatial error model and the OLS model, so that seems like it's the best fit for the data. For ecppl1, there are jst a couple points clusteredd in the north eastern corner that are significant. For hsppl1, there are 4 locations that are significant, which are all a single point or a couple points clustered. 3/4 of these clusters are again in the NE corner. For ecplc1, there is a much larger region, again in the NE corner that is significant, and a little region in the SW corner that is significant. Finally, for enplc4, there are a few significant clusters scattered around the plot. 3 out of 4 variables show similar significance of variation, while enplc4 seems to follow a different pattern. 
+
+####Table Attached
+
+
