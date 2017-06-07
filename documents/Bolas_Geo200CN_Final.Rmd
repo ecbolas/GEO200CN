@@ -1,0 +1,144 @@
+---
+title: "Bolas_Geo200CN_Final"
+author: "Ellie Bolas,Geo200CN, Spring 2017"
+date: "June 1, 2017"
+output: html_document
+---
+#Final Project
+Using half of the photos from a single grid, SC04-Pozo to test out occupancy modeling and how to use the camtrapR package
+
+####read in data: from MapView
+```{r}
+#install.packages("camtrapR")
+library(camtrapR)
+library(dplyr)
+library(tidyr)
+#install.packages("secr")
+library(secr)
+#install.packages("unmarked")
+library(unmarked)
+
+pozo12a <- read.csv("data/SC04012_20161214.csv", header = TRUE)
+head(pozo12a)
+
+pozo6a <- read.csv("data/SC04006_20161214.csv", header = TRUE)
+head(pozo6a)
+
+pozoMa <- read.csv("data/SC0400M_20161214.csv", header = TRUE)
+
+```
+
+
+####clean data: from MapView
+I want to do two things to get the data clean:
+1. Remove the un-needed columns
+2. Make a new column that combines label and Image.Name. That way the location, date, and time are all together and large amounts of data can be manipulated without getting confused.
+3. Add utms (in Nad83)
+4. Seperate out the tags
+```{r}
+#remove the columns we don't need
+pozo12 <- pozo12a %>% select(-Trigger, -Moon.Phase, -Illum, -Contrast, -Brightness, -Sharpness, -Sensitivity, -Battery.Volts., -Saturation, -Serial.., -Narrative, -Firmware, -Image.Path, -Ir, -Vir, -Original.File.Name, -Location.Latitude, -Location.Longitude)
+
+pozo6 <- pozo6a %>% select(-Trigger, -Moon.Phase, -Illum, -Contrast, -Brightness, -Sharpness, -Sensitivity, -Battery.Volts., -Saturation, -Serial.., -Narrative, -Firmware, -Image.Path, -Ir, -Vir, -Original.File.Name, -Location.Latitude, -Location.Longitude)
+
+pozoM <- pozoMa %>% select(-Trigger, -Moon.Phase, -Illum, -Contrast, -Brightness, -Sharpness, -Sensitivity, -Battery.Volts., -Saturation, -Serial.., -Narrative, -Firmware, -Image.Path, -Ir, -Vir, -Original.File.Name, -Location.Latitude, -Location.Longitude)
+
+#new column combining label and Image.Name
+pozo12$imagename <- paste(pozo12$Label, "_", pozo12$Image.Name)
+
+pozo6$imagename <- paste(pozo6$Label, "_", pozo6$Image.Name)
+
+pozoM$imagename <- paste(pozoM$Label, "_", pozoM$Image.Name)
+
+#UTMS column
+pozo12$utmx <- 235842
+pozo12$utmy <-  3766396
+
+pozo6$utmx <- 236156
+pozo6$utmy <- 3765434
+
+pozoM$utmx <- 235995
+pozoM$utmy <- 3765908
+
+#separate tags
+#R sees the data as Target\nIsland Fox, \n is a line break, which is an escape character. "\" or "\n" is a character itself
+
+#Check what the separators look like when there is more than two tags
+#pozo12[100,] Target\nIsland Spotted Skunk\ninteresting
+#I think this doesn't matter. All I care about right now are the first two
+
+class(pozoM) #data.frame
+head(pozoM)
+#trying the separate function..
+pozo12sep <-separate(data = pozo12, col = Tags, into = c("targettag", "speciestag"), sep = "\n", remove = FALSE, fill = "right")
+
+pozo6sep <- separate(data = pozo6, col = Tags, into = c("targettag", "speciestag"), sep = "\n", remove = FALSE, fill = "right")
+
+pozoMsep<- separate(data = pozoM, col = Tags, into = c("targettag", "speciestag"), sep = "\n", remove = FALSE, fill = "right")
+
+```
+
+##Notes on camtrap R
+CamtrapR is a workflow and set of operations to take a camera trapper from raw photos to some exploratory stats and data ready to be analysed. The features can help prep for occupancy modeling or spatial-recapture analysis, the two common ways of using camera data. Island foxes and island spotted skunks are not distinguishable to individual, so I will use occupany analysis to answer my varied questions. Many of the functions camtrapR offers, I already am able to do through my tagging software, MapView. So, the questions are:
+-can what I have done translate to camtrapR? Do I need it to? -Or, can I immediately jump into using secr or unmarked or presence?
+
+###camtrapR components
+####-Image management and species identifacation: 
+Starts with ideas about how to organize and and tag photos, I already have a system I'm happy with
+
+####-Image Data Extraction
+  -record table: I already have this. BUT, when camtrapR does a record table, it does the "target" for me, by calculating time between images. I should test this.
+  -Camera Station Operation table: The reflects the daily trapping effort per station. We need this info, both because I need to be able to calculate this information, and also because camtrapR uses this to do other things. I also need to make this, camtrapR recommends making it in excel and then importing it. 
+  
+#####recordTable 
+```{r}
+#pozo6record<- recordTable(inDir = pozo6sep
+#                          IDfrom = "metadata"
+#                         minDeltaTime = 1 #in minutes
+#                          deltaTimeCompared to = "last record"
+#)
+#Ok, this isn't working because I already have data in a CSV, it will only work if I do it with photos in some kind of directory. I already have my interns do this. But maybe I should use this program?????
+
+```
+
+#####cameraOperation
+```{r}
+SC04tbl<-read.csv("data/SC04StationInfo.csv")
+SC04operat<- cameraOperation(CTtable = SC04tbl,
+                stationCol = "Station",
+                setupCol = "setup_date",
+                retrievalCol = "retrieval_date",
+                writecsv = FALSE,
+                hasProblems = FALSE,
+                dateFormat = "%d/%m/%Y"
+)
+#head(SC04operat)
+
+```
+
+####-Data Visualization and Exploration
+  -detectionMaps: plots maps of species records by staton and number of independent detections by species
+  -single-species activity patterns: histograms of hourly activity, activity kernal density estimations, radial plots (activityHistogram, activityDensity, activityRadial)
+  -two-species activity overlaps: activityOverlap
+Playing with this stuff will be one way to assess whether my tagging system/recordtable is fine, and/or how I need to modify this part of things. 
+
+#####detectionMaps
+For detectionMaps, the station column should be a station ID that is the same in both the CTtable and recordTable. (Maybe this is how the two )
+```{r}
+#pozo12map <- detectionMaps(CtTable = SC04operat, 
+#                           recordTable = pozo12sep,
+#                           Xcol = "utm_x",
+#                           Ycol = "utm_y",
+#                           stationCol = "station"
+#)
+
+
+```
+
+
+
+Other things to do: 
+-test digikam, maybe it's better than mapview
+-get to know secr package and capthist function
+-find a way to inclue total days cam running
+
