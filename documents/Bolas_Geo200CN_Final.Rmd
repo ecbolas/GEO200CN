@@ -69,7 +69,7 @@ pozoM$utmy <- 3765908
 
 class(pozoM) #data.frame
 head(pozoM)
-#trying the separate function..
+#seperate out all the tags, which are currently in a single column
 pozo12sep <-separate(data = pozo12, col = Tags, into = c("targettag", "speciestag"), sep = "\n", remove = FALSE, fill = "right")
 
 pozo6sep <- separate(data = pozo6, col = Tags, into = c("targettag", "speciestag"), sep = "\n", remove = FALSE, fill = "right")
@@ -82,11 +82,11 @@ pozoMsep<- separate(data = pozoM, col = Tags, into = c("targettag", "speciestag"
 CamtrapR is a workflow and set of operations to take a camera trapper from raw photos to some exploratory stats and data ready to be analysed. The features can help prep for occupancy modeling or spatial-recapture analysis, the two common ways of using camera data. Island foxes and island spotted skunks are not distinguishable to individual, so I will use occupany analysis to answer my varied questions. Many of the functions camtrapR offers, I already am able to do through my tagging software, MapView. So, the questions are:
 -can what I have done translate to camtrapR? Do I need it to? -Or, can I immediately jump into using secr or unmarked or presence?
 
-###camtrapR components
-####-Image management and species identifacation: 
+##camtrapR components
+###-Image management and species identifacation: 
 Starts with ideas about how to organize and and tag photos, I already have a system I'm happy with
 
-####-Image Data Extraction
+###-Image Data Extraction
   -record table: I already have this. BUT, when camtrapR does a record table, it does the "target" for me, by calculating time between images. I should test this.
   -Camera Station Operation table: The reflects the daily trapping effort per station. We need this info, both because I need to be able to calculate this information, and also because camtrapR uses this to do other things. I also need to make this, camtrapR recommends making it in excel and then importing it. 
   
@@ -101,11 +101,39 @@ Starts with ideas about how to organize and and tag photos, I already have a sys
 
 ```
 
+####Turning my current table into a recordTable like camtrapR
+Their record table has station, species, date, time, and this delta.time, which is a way to identify a target. I will make a record table with similar information.
+
+
+```{r}
+#select is for columns, filter is for rows
+
+#rt12 <- pozo12sep %>% select(Label, Date, Time, targettag, speciestag, imagename) %>%  filter(!is.na(speciestag)& !(speciestag== "interesting"))
+#this worked! Got rid of the column fill-in problem: some photos have more than the two basic tags of "target" and "species name," I had to figure out how to not include that in this analysis Double-checked this against photos in mapview, 37 "targets" in both locations
+
+rtp12 <- pozo12sep %>% select(Label, Date.Time, Date, Time, targettag, speciestag, imagename) %>%  filter(!is.na(speciestag)& !(speciestag== "interesting") & !(speciestag == "Other") & !(speciestag == "Wind/Heat")) #this now only includes animal species
+
+rtp6 <-pozo6sep %>% select(Label, Date.Time, Date, Time, targettag, speciestag, imagename) %>%  filter(!is.na(speciestag)& !(speciestag== "interesting") & !(speciestag == "Other") & !(speciestag == "Wind/Heat"))
+
+rtpM <- pozoMsep %>% select(Label, Date.Time, Date, Time, targettag, speciestag, imagename) %>%  filter(!is.na(speciestag)& !(speciestag== "interesting") & !(speciestag == "Other") & !(speciestag == "Wind/Heat"))
+
+#record table for Pozo!
+recordTablePozo <- bind_rows(rtp12, rtp6, rtpM)
+summary(recordTablePozo)
+
+#need to add a DateTimeOriginal column
+#Did this in excel. Ultimately, better to do this in R, but it's a little clunky to make work in R right now. Will re-visit later.
+
+
+```
+
+
 #####cameraOperation
 ```{r}
 SC04tbl<-read.csv("data/SC04StationInfo.csv")
+
 SC04operat<- cameraOperation(CTtable = SC04tbl,
-                stationCol = "Station",
+                stationCol = "Label",
                 setupCol = "setup_date",
                 retrievalCol = "retrieval_date",
                 writecsv = FALSE,
@@ -116,29 +144,64 @@ SC04operat<- cameraOperation(CTtable = SC04tbl,
 
 ```
 
-####-Data Visualization and Exploration
+###-Data Visualization and Exploration
   -detectionMaps: plots maps of species records by staton and number of independent detections by species
   -single-species activity patterns: histograms of hourly activity, activity kernal density estimations, radial plots (activityHistogram, activityDensity, activityRadial)
   -two-species activity overlaps: activityOverlap
 Playing with this stuff will be one way to assess whether my tagging system/recordtable is fine, and/or how I need to modify this part of things. 
 
 #####detectionMaps
-For detectionMaps, the station column should be a station ID that is the same in both the CTtable and recordTable. (Maybe this is how the two )
+For detectionMaps, the station column should be a station ID that is the same in both the CTtable and recordTable. (Maybe this is how the two merge)
 ```{r}
-#pozo12map <- detectionMaps(CtTable = SC04operat, 
-#                           recordTable = pozo12sep,
-#                           Xcol = "utm_x",
-#                           Ycol = "utm_y",
-#                           stationCol = "station"
-#)
+pozomap <- detectionMaps(CTtable = SC04tbl, 
+                          recordTable = recordTablePozo,
+                          Xcol = "utm_x",
+                          Ycol = "utm_y",
+                          stationCol = "Label",
+                         speciesCol = "speciestag",
+                         writePNG = FALSE,
+                         plotR = TRUE,
+                         richnessPlot = TRUE,
+                         speciesPlots = TRUE,
+                         printLabels = TRUE,
+                         addLegend = TRUE
+)
 
+#foxactivity <- activityDensity(recordTable = recordTablePozo,
+#                              species = Island Fox,
+#                              allSpecies = FALSE, 
+#                              speciesCol = "speciestag",
+#                              )
 
 ```
+This printed out a species richness plot, as well as a plot for detections for each "species." I'll need to fix "bird" and "mouse." These plots are great, they will be even more exciting when I have every grid on here. 
 
+###-Data Export for Occupancy Analysis
+The unmarked package uses a custom df for analyses. camtrapR claims to be the best system to get ready for occupancy analyses (which are done with either the unmarked package, or other programs/pacakges.) I have only looked over unmarked a little bit at this point, so I'm not totally clear on how much of camtrapR really is getting me where I need to go. But, this is the last step, so I want to test this capability and what it gives me
+
+detectionHistory
+```{r}
+dhpozofox <- detectionHistory(recordTable = recordTablePozo,
+                             camOp = SC04operat,
+                           species = "Island Fox",  
+                           stationCol = "Label",
+                           speciesCol = "speciestag",
+                           recordDateTimeCol = "Date.Time",
+                           recordDateTimeFormat = "%Y-%m-%d %H-%M-%S",
+                           occasionLength = 1,#in days
+                           day1 = "2016-08-25", #means the day the station was set
+                           includeEffort = TRUE,
+                           scaleEffort = FALSE,
+                           occasionStartTime = 6, #default is midnight, that throws things off for skunks/nocturnal animals
+                           timeZone = "US/Pacific"
+)
+#Error: record date outside camera operation date range:  SC04012, SC04006, SC0400M. I think this is because the date is in different formats in the various locations. Fixing this in the excel sheet. Hmmm. Fixed in in excel, still no good...
+
+```
 
 
 Other things to do: 
 -test digikam, maybe it's better than mapview
 -get to know secr package and capthist function
--find a way to inclue total days cam running
+-find a way to inclue total days cam running- this is taken care of in my operations table
 
