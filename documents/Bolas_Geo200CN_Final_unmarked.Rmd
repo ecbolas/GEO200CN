@@ -1,0 +1,99 @@
+---
+title: "Bolas_Geo200CN_Final_unmarked"
+author: "Ellie Bolas, GEO200CN, Spring 2017"
+date: "June 11, 2017"
+output: html_document
+---
+#Final Project: unmarked
+
+
+###Background
+The unmarked package is an R package designed to conduct occupancy modeling for individuals without unique ids. When individuals can be identified individually, then spatial-recapture models are used, as in the secr package. Presence and Mark are more well-known, stand-along packages that have been used in the past to perform occupancy modeling. 
+
+Some good sites to help learn unmarked, paper citations included with general write-up:
+https://sites.google.com/site/asrworkshop/home/schedule/r-occupancy-1
+
+https://projects.ncsu.edu/cals/course/zo501/2016%20Sampling%20Lab/IntroR.and.Occupancy.pdf
+
+https://www.mbr-pwrc.usgs.gov/workshops/unmarked/Slides/slides_unmarked-intro.pdf
+
+For an occupancy analysis, the input data will fall into 3 categories:
+
+-Detection histories in which the rows of the data will usually be sites and the columns will represent detection occasions or other units of replication. (this is the detectionHistory output from camtrapR, and each column is a single day that the camera trap ran, since that is how a descritized the detection occasions.)
+
+-Site-specific covariates, which are attributes measured on each of the sites that potentially explain site-to-site variability in detection and/or occupancy. These are features that don't change with repeated site visits, such as % cover, on/off road.
+
+-Sample-specific or "observation level" covariates, which are attributes measures at each of the sample occasions (replicates). These are data that are specific to the sampling occasion and site (time of day, day of year, temperature)
+
+Occupancy works with both spatial and temporal replication to test both state and obesrvation processes. It tests the probability that site i is occupied, and pij= the probability of detecting the species i at time j given the species is present.
+
+I have 30 independent sites, which gives me spatial replication/detection independence. (The sites are a skunk home range apart to create independence.) I also have temporal replicates, because each camera ran for 6 months (more or less.)
+
+The model assumes that probability of detection/occupancy are constant across sites, or are explained by covariates.
+
+#####load libraries
+```{r}
+library(unmarked)
+library(dplyr)
+library(tidyr)
+```
+
+
+###Read in and Format data
+I already have the detection history df nicely made by camtrapR. The example I'm following suggests adding in site-specific covariates to this df, then converting it to the unmarked data type unmarkeddf. I am going to make dummy data for site-specific and sample specific variables so I can actually test this model.
+```{r}
+#the first time I read this in I got strange results, I think I need to remove the site labels from the data sets
+
+#Island Spotted Skunk
+
+#detection history data
+datapath <- "C:/Users/ebola/Google Drive/Git/GEO200CN/data"
+issdh <- read.csv(file.path(datapath, "/Island Spotted Skunk__record_history__with_effort__1_days_per_occasion__occasionStart6h__first_day_2016-08-25__2017-06-11.csv"))
+y <- issdh[,2:113]
+#head(y)
+
+#site covariate data
+pozosite <- read.csv(file.path(datapath, "Pozo_site.csv"))
+pozosite1 <- pozosite[2:3]
+
+
+#sample occasion data
+#For now this is dummy time data. I definitely will want to include time, and I think temperature in the real thing. I think that the skunks were more active once it got cooler, and it would be nice to be able to demonstate that.
+n<-ncol(y) #gives me the number of rows in my df for the dummy data
+time<-as.factor(rep(c(1,2,3),n))
+pozo.obs<-data.frame(time)
+time
+
+#put it all together, unmarkedFrame for skunks 
+isspozo <- unmarkedFrameOccu(y = y, siteCovs = pozosite1, obsCovs = pozo.obs) 
+summary(isspozo)
+
+#unmarkedFrame for foxes
+ifdh <- read.csv(file.path(datapath, "Island Fox__record_history__with_effort__1_days_per_occasion__occasionStart6h__first_day_2016-08-25__2017-06-11.csv"))
+yfox <- ifdh[,2:113]
+
+ifpozo <- unmarkedFrameOccu(y = yfox, siteCovs = pozosite1, obsCovs = pozo.obs)
+
+summary(ifpozo)
+```
+Note: this only returns 4 detections of skunks, even though there were 6 targets and 6 records. This is because two of the detections are within 24hrs (1 day) of one another, so they are not considered independent. It will be good to check in with Rahel about my descritization of one day (or more), and it will be good to talk with Kevin about this, as well as about when to start the "day," based on skunk behavior. Right now I have the day as 6 am, which seems to fit well with what we know of them, and the activity histogram I made.
+
+###Fit Some Models
+There are a lot of models they offer, and some they would like to add. I'm vary interested in one that would do occupancy models with spatial correlation. (This model is based on the paper on tigers that was my introduction to occupancy modeling!) For now, I will do the simple single-season site occupancy model, occu(), which tests constant detection and occupancy model (no time, no covariate effects).
+```{r}
+occu1 <- occu(~1 ~1, isspozo)
+#means: model<-occu(~detection_formula ~occupancy_formula, dataframe)
+#both formulas are generalized linear models (~ refers to intercept models with a logit transformation.) 
+
+occu1 #need to transform the data from the logit scale to actually understand it for both detection ("det") and occupancy ("state")
+
+backTransform(occu1, "det")
+# Estimate     SE LinComb (Intercept)
+#   0.0351 0.0179   -3.32           1
+
+backTransform(occu1, "state")
+# Estimate    SE LinComb (Intercept)
+#     0.34 0.278  -0.665           1
+```
+
+
