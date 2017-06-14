@@ -5,9 +5,15 @@ date: "June 1, 2017"
 output: html_document
 ---
 #Final Project: camtrapR
-Using half of the photos from a single grid, SC04-Pozo to test out how to use the camtrapR package. 
 
-camtrapR is designed to help get raw photos into a format ready to be analyzed in unmarked, a package that does occupancy modeling. camtrapR also allows data visualization and exploration, by making species richness and detection maps. It can also return activity patterns.
+##Background
+
+
+All of camtrapR is data prep. It is designed to help get raw photos into a format ready to be analyzed in unmarked, a package that does occupancy modeling. camtrapR also allows data visualization and exploration, by making species richness and detection maps. It can also return activity patterns.
+
+The other element of data prep is cleaning and tagging photos with species and other identifiers. For the last 3 months, I have been testing out differnt photo tagging programs and ways to get the photo data ready for processing in R. With some of the photos that are cleaned, I will use half of the photos from a single grid, SC04-Pozo to test out how to use the camtrapR package. 
+
+
 
 ####read in data: from MapView
 ```{r}
@@ -33,11 +39,11 @@ pozoMa <- read.csv("data/SC0400M_20161214.csv", header = TRUE)
 
 
 ####clean data: from MapView
-I want to do two things to get the data clean:
+I want to do four things to get the data clean:
 1. Remove the un-needed columns
 2. Make a new column that combines label and Image.Name. That way the location, date, and time are all together and large amounts of data can be manipulated without getting confused.
 3. Add utms (in Nad83)
-4. Seperate out the tags
+4. Seperate out the tags (they are currently all listed in one column, I want them seperated.)
 ```{r}
 #remove the columns we don't need
 pozo12 <- pozo12a %>% select(-Trigger, -Moon.Phase, -Illum, -Contrast, -Brightness, -Sharpness, -Sensitivity, -Battery.Volts., -Saturation, -Serial.., -Narrative, -Firmware, -Image.Path, -Ir, -Vir, -Original.File.Name, -Location.Latitude, -Location.Longitude)
@@ -83,7 +89,8 @@ pozoMsep<- separate(data = pozoM, col = Tags, into = c("targettag", "speciestag"
 
 ##Notes on camtrap R
 CamtrapR is a workflow and set of operations to take a camera trapper from raw photos to some exploratory stats and data ready to be analysed. The features can help prep for occupancy modeling or spatial-recapture analysis, the two common ways of using camera data. Island foxes and island spotted skunks are not distinguishable to individual, so I will use occupany analysis to answer my varied questions. Many of the functions camtrapR offers, I already am able to do through my tagging software, MapView. So, the questions are:
--can what I have done translate to camtrapR? Do I need it to? -Or, can I immediately jump into using secr or unmarked or presence?
+-can what I have done translate to camtrapR? Do I need it to? 
+-Or, can I immediately jump into using secr or unmarked or presence?
 
 ##camtrapR components
 ###-Image management and species identifacation: 
@@ -132,6 +139,7 @@ summary(recordTablePozo)
 
 
 #####cameraOperation
+This is a table with information about each camera station. This table is combined with the species record table to make the unmarked df and to run some exploratory analyses.
 ```{r}
 SC04tbl<-read.csv("data/SC04StationInfo.csv")
 
@@ -201,7 +209,7 @@ linewidth = c(3,3))
 
 
 ###-Data Export for Occupancy Analysis
-The unmarked package uses a custom df for analyses. camtrapR claims to be the best system to get ready for occupancy analyses (which are done with either the unmarked package, or other programs/pacakges.) I have only looked over unmarked a little bit at this point, so I'm not totally clear on how much of camtrapR really is getting me where I need to go. But, this is the last step, so I want to test this capability and what it gives me
+The unmarked package uses a custom df for analyses. camtrapR claims to be the best system to get ready for occupancy analyses (which are done with either the unmarked package, or other programs/pacakges.) 
 
 Single Species detectionHistory outputs 
 ```{r}
@@ -243,9 +251,10 @@ dhpozoskunk <- detectionHistory(recordTable = recordTablePozo,
 dhpozoskunk[[1]]
 
 ```
-What I have learned from this is that in using mapview, I was still able to coerce the data to give me the outputs the camtrapR offers. I don't need to add metadata to exif tables to do this, nor do I have to make a bunch of seperate species folders per camera station. It also gives me the ability to manipulate the descritization of the time period. That is, when I tag "target" on my own, I can find a way to note multiple species, or get the timing right on what is a seperate individual to the trap.
 
-##-Summary
+##-Summary 
+What I have learned from this is that in using MapView, my photo tagging program, I was still able to coerce the data to give me the outputs the camtrapR offers. I don't need to add metadata to exif tables to do this, nor do I have to make a bunch of seperate species folders per camera station. It also gives me the ability to manipulate the descritization of the time period. That is, when I tag "target" on my own, I can find a way to note multiple species, or get the timing right on what is a seperate individual to the trap. The output is what I need to make an unmarked df and do single species occupancy analysis.
+
 ```{r}
 #surveyReport(recordTable = recordTablePozo,
 #             CTtable = SC04tbl,
@@ -263,11 +272,5 @@ What I have learned from this is that in using mapview, I was still able to coer
 #              makezip = TRUE)
 #Didn't make the entire zipfile, not sure why, but the textfile is cool
 ```
-
-
-
-
-
-
 
 

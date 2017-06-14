@@ -29,7 +29,9 @@ Occupancy works with both spatial and temporal replication to test both state an
 
 I have 30 independent sites, which gives me spatial replication/detection independence. (The sites are a skunk home range apart to create independence.) I also have temporal replicates, because each camera ran for 6 months (more or less.)
 
-The model assumes that probability of detection/occupancy are constant across sites, or are explained by covariates.
+For testing of unmarked, I am using 2 months of data island spotted skunk data from the 3 cameras at the pozo grid.
+
+####The model assumes that probability of detection/occupancy are constant across sites, or are explained by covariates.
 
 #####load libraries
 ```{r}
@@ -62,11 +64,11 @@ pozosite1 <- pozosite[2:3]
 n<-ncol(y) #gives me the number of rows in my df for the dummy data
 time<-as.factor(rep(c(1,2,3),n))
 pozo.obs<-data.frame(time)
-time
+#time
 
 #put it all together, unmarkedFrame for skunks 
-isspozo <- unmarkedFrameOccu(y = y, siteCovs = pozosite1, obsCovs = pozo.obs) 
-summary(isspozo)
+issumf <- unmarkedFrameOccu(y = y, siteCovs = pozosite1, obsCovs = pozo.obs) 
+summary(issumf)
 
 #unmarkedFrame for foxes
 ifdh <- read.csv(file.path(datapath, "Island Fox__record_history__with_effort__1_days_per_occasion__occasionStart6h__first_day_2016-08-25__2017-06-11.csv"))
@@ -79,21 +81,150 @@ summary(ifpozo)
 Note: this only returns 4 detections of skunks, even though there were 6 targets and 6 records. This is because two of the detections are within 24hrs (1 day) of one another, so they are not considered independent. It will be good to check in with Rahel about my descritization of one day (or more), and it will be good to talk with Kevin about this, as well as about when to start the "day," based on skunk behavior. Right now I have the day as 6 am, which seems to fit well with what we know of them, and the activity histogram I made.
 
 ###Fit Some Models
-There are a lot of models they offer, and some they would like to add. I'm vary interested in one that would do occupancy models with spatial correlation. (This model is based on the paper on tigers that was my introduction to occupancy modeling!) For now, I will do the simple single-season site occupancy model, occu(), which tests constant detection and occupancy model (no time, no covariate effects).
+There are a lot of models offered by unmarked, and some they would like to add. I'm very interested in one that would do occupancy models with spatial correlation. (This model is based on the paper on tigers that was my introduction to occupancy modeling!) For now, I will do the simple single-season site occupancy model, occu(), which tests constant detection and occupancy. I can also modify occu() to test covariate effects.
+
+In the future it may make sense to use the program Presence to do a two-species occupancy model so that I can look at spatial autocorrelation in foxes and skunks. However, foxes are so common that it may not be possible to do an occupancy model for them: they may just be 1! In that case, it might make more sense to do a single species occupancy model for skunks, with fox presence or fox activity as a covariate.
+
+unmarked transforms data to logit, and here's why: My presence data is in 0 or 1, so basically two categories. Whether or not Y= 0 or 1 at a location is determined by probability, p. This probability has to be between 0 and 1. Even though Y is categorical, it is modeled as a linear regression. However, this would return negative values for p. So, instead, we model: logit (pi = Bo + BiXi(predictor values)). This returns linear predictors for the logit probability. The data that are returned are useful (more on that below), and can also be back-transformed to give us p.
+
+One more note: it is important that this model assumes occupancy is constant, even if detection is not. In other words, we think the animals are always there, even if they aren't being caught by the camera. If I think there is seasonal variation, that may change how I analyze the data. It's true that I think the skunks are less active in the summer, but I don't think they are hibernating or have left, I think they just don't move aroun as much. In that case, it's fine to analyze all the data from June-December together. If the occupancy is not constant, but varies by season, than those data need to be analyzed seperately. 
+
+
+#####ISS Simple, Single-Season Occupancy
+#####~Constant detection and Occupancy~
 ```{r}
-occu1 <- occu(~1 ~1, isspozo)
+issoccu <- occu(~1 ~1, issumf)
 #means: model<-occu(~detection_formula ~occupancy_formula, dataframe)
-#both formulas are generalized linear models (~ refers to intercept models with a logit transformation.) 
+#both formulas are generalized linear models (~ refers to intercept models with a logit transformation) 
 
-occu1 #need to transform the data from the logit scale to actually understand it for both detection ("det") and occupancy ("state")
+issoccu  
+#Occupancy:
+ #Estimate   SE      z P(>|z|)
+  # -0.665 1.24 -0.537   0.591
 
-backTransform(occu1, "det")
-# Estimate     SE LinComb (Intercept)
-#   0.0351 0.0179   -3.32           1
 
-backTransform(occu1, "state")
-# Estimate    SE LinComb (Intercept)
-#     0.34 0.278  -0.665           1
+#Detection:
+ #Estimate   SE     z  P(>|z|)
+  #  -3.32 0.53 -6.26 3.85e-10
+
+#AIC: 42.29647 
+
 ```
 
+Back Transform
+```{r}
 
+#"det" = detection and "state" = occupancy
+backTransform(issoccu, "det")
+# Estimate     SE LinComb (Intercept)
+#   0.0351 0.0179   -3.32           1
+#Prob. detection = 3%
+
+backTransform(issoccu, "state")
+# Estimate    SE LinComb (Intercept)
+#     0.34 0.278  -0.665           1
+#Prob. Occupied = 34%
+```
+
+How do I interpret this is our probability of detection is lower than our probability of occupancy? This is actually a normal occurence.
+
+
+When adding covariates, only spatial stuff can go into occupancy parameter, the detection parameter can take both temporal (time, temperature) and spatial. 
+Remember, this model assumes occupancy is constant- the animal is always there, even if we don't detect it.  
+
+#####Adding Covariates to simple occupancy
+```{r}
+
+#constant detection, occupancy predicted by habitat type
+
+isshabitat <- occu(~1 ~habitat_type, issumf)
+isshabitat
+#Occupancy:
+ #                     Estimate   SE      z P(>|z|)
+#(Intercept)              -8.12 41.3 -0.196   0.844
+#habitat_typeoak-scrub    16.65 82.3  0.202   0.840
+
+#AIC: 40.51461 
+
+#constant detection, occupancy predicted by habitat and %cover
+isscovs <- occu(~1 ~perct_cover, issumf)
+#Error: Hessian is singular.  Try providing starting values or using fewer covariates. Not sure what this means. But, part of the reason this may not have worked is because this simple model assumes constant occupancy, it's just detection that should change
+
+#detection by habitat type, occupancy constant
+isshabitat2 <- occu(~habitat_type~1, issumf)
+isshabitat2 #AIC: 44.33213 
+#Warning message:
+#In sqrt(diag(vcov(obj))) : NaNs produced
+#isshabitat3 <- occu(~scale(habitat_type)~1, isspozo)
+#For some reason it doen't like this, even if I scale the variable. It can't estimate SE, z, of P(>|z|). One suggestion from the help group is that this can be an issue with a small sample size.
+
+```
+In trying to play with covariate, the errors that arise may be a product of sparse data. This can be corrected by providing "starting values." The other issue may be that I descritized the data to a single day, which returns a lot of 0s, and not alot of 1s for the models to detect. Ultimately, I will want/need to play around with a few days, a week, etc. That way I don't have so many 0s in my data. At the same time, I need to make sure I don't mask the skunks when they are around.
+
+Note: If I had real time variables in there, then we could hold occupancy constant and very detection by time.
+
+###ISS Model Fit and Selection
+unmarked has built in functions to test the models that have been developed.
+```{r}
+fms <- fitList(issoccu, isshabitat) #puts all the models together so that they can be compared
+fms
+class(fms)
+modSel(fms)  #lists models in order from best AIC, isshabitat has the better AIC
+parboot(isshabitat)
+#does bootstrapping for me, tests goodness of fit
+
+summary(isshabitat)
+#For the untransformed habitat model, this is the same as:
+#logit(p(occupancy)) = -8.12 + 16.65(xi), where xi is the value of the habitat at site i.
+
+#Reminder, isshabitat <- occu(~1 ~habitat_type, issumf) so detection was constant and habitat_type was varied for occupancy
+
+#Let's get these numbers from logit and negatives back to percentages:
+
+backTransform(isshabitat, "det")
+# Estimate     SE LinComb (Intercept)
+#   0.0357 0.0175    -3.3           1
+#Prob. detection is almost identical to above, at 3%
+
+#another way to get this information is with the predcit function, which also returns standard confidence intervals
+predictiss <- predict(isshabitat, type = "det", appendData = TRUE)
+#head(predictiss)
+#   Predicted         SE      lower      upper
+#1 0.03571421 0.01753563 0.01346877 0.09130059
+
+predictiss2 <-predict(isshabitat, type = "state", appendData = TRUE)
+#head(predictiss2)
+#     Predicted         SE        lower upper
+#1 0.9998027318 0.01404385 1.242970e-57     1
+#2 0.0002978163 0.01230625 1.952424e-39     1
+#3 0.0002978163 0.01230625 1.952424e-39     1
+#This returns the occupancy probability for each of the three sites. Interestingly, backTransform doesn't work for covariates in the state parameter, but this gives us the information we want. 
+
+#backTransform(isshabitat, "state") Error in .local(obj, ...) : 
+  #Cannot directly backTransform an unmarkedEstimate with length > 1.
+
+#Another option is to use a linear combine to backTransform the state data, this will be something to practice more with later.
+
+
+#qplot(habitat_type, Predicted, data = predictiss2, geom = "line", xlab = "Habitat Type", ylab = "Estimated Occupancy") +
+#  geom_ribbon(aes(x = habitat_type, ymin = lower, ymax = upper), alpha = 0.1) +  
+#  theme_bw()
+#tried to graph, too bad it didn't work
+
+```
+
+###Results:
+For the island spotted skunk single species occupancy model, a model that predicted skunk occurence as correlated with habitat type had the best AIC at 40.51. The null model AIC was 42.30. The habitat-type model predicted a 3% probability of detection across all 3 cameras, and a 99% occupancy at camera 12 with the oak-scrub habitat type, and a 0% occupancy at the other two cameras with the grass habitat type.
+
+
+###Next Steps:
+-Graphs. It would be nice to get the probabilities and confidence intervals to be graphed. Also, once I have the probabilities, I can graph these against habitat type with a land cover map for all of Santa Cruz Island and predict where else on the island skunks should be.
+
+-Try the Bayesian approach and average models
+
+-A hierarchical distance sampling model allows the estimate of abundance with the occurence probability estimates. Then, this can be used to estimate density/abundance.However, while this can be applied for transect and point counts, I'm not totally clear if cameras can be used as a point count to do this.
+
+-Read modules on using unmarked developed by Richard Chandler and others
+
+###Summary
+Using unmarked, I was able to get a simple detection and occupancy estimate for island spotted skunks at one grid. While most of my energy went into getting the data ready to be analysed, I now can turn my attention to the kinds of analysis I will want to use with my data. 
